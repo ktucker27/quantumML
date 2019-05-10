@@ -12,9 +12,9 @@ lmin = 1e-4;
 
 eloc_evs = zeros(num_iterations,1);
 for i=1:num_iterations
-    %if mod(i,10) == 0
-    %    disp(['i = ', num2str(i)]);
-    %end
+    if mod(i,10) == 0
+        disp(['i = ', num2str(i)]);
+    end
     
     % Get a matrix of spin samples
     sz_samps = zeros(n, num_samps);

@@ -1,11 +1,15 @@
-function [t,psi] = nqs_tvmc(a0, b0, w0, dt, tf)
+function [t,psi,a,b,w] = nqs_tvmc(a0, b0, w0, dt, tf)
 
 num_samps = 1000;
-h = 2;
-eloc = @(wave, a, b, w, sz)(tfi_eloc(wave, a, b, w, sz, h));
+% h = 1;
+% eloc = @(wave, a, b, w, sz)(tfi_eloc(wave, a, b, w, sz, h));
 n = size(a0,1);
 m = size(b0,1);
-num_steps = 2*n;
+num_steps = 4*n;
+
+%eloc = @(wave, a, b, w, sz)(afh_eloc(wave, a, b, w, sz, n, 1));
+d = 3;
+eloc = @(wave, a, b, w, sz)(exc_eloc(wave, a, b, w, sz, d));
 
 odes = @(t,y)(nqs_ode(t,y,n,m,eloc,num_samps,num_steps));
 
@@ -17,11 +21,8 @@ else
     tvec = [0;tf];
 end
 
-options = odeset('RelTol',1e-4,'AbsTol',1e-5);
+options = odeset('RelTol',1e-3,'AbsTol',1e-3);
 [t,y] = ode45(odes,tvec,y0,options);
-
-size(t)
-size(y)
 
 psi = zeros(2^n,size(t,1));
 for i=1:size(t,1)
