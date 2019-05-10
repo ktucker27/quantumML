@@ -1,5 +1,5 @@
 function [szl, szr, qsz] = nqs_open_sample(density, a, b, c, w, u, num_steps)
-% nqs_sample_open Generate a vector of spins sampled from a distribution
+% nqs_open_sample Generate a vector of spins sampled from a distribution
 %                 governed by the NQS density determined by the set of
 %                 parameters (a, b, c, w, u)
 %
@@ -34,7 +34,7 @@ qtheta = b + w*qsz;
 qtheta_m = c + conj(c) + u*qsz + conj(u)*qsz;
 
 % Walk to a state with nonzero probability. This randomly moves around a
-% column of the desnity operator TODO - Explore more of the operator
+% column of the density operator TODO - Explore more of the operator
 while density(a, theta_l, theta_r, theta_m, szl, szr) == 0
     flip_idx = ceil(n*rand());
     szl(flip_idx) = -1*szl(flip_idx);

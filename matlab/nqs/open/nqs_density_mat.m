@@ -1,4 +1,4 @@
-function [dvecl,dvecr,rho,rho_vec] = nqs_density_mat(a, b, c, w, u)
+function [dvecl,dvecr,rho,rho_vec] = nqs_density_mat(density, a, b, c, w, u)
 
 n = size(a,1);
 
@@ -17,7 +17,7 @@ for dl=1:2^n
     for dr=1:2^n
         dvecr(dr,1) = dr-1;
         szr = -2*get_bi(dr-1, n) + 1;
-        rho(dl,dr) = nqs_density_z(a, b, c, w, u, szl, szr);
+        rho(dl,dr) = nqs_density_z(density, a, b, c, w, u, szl, szr);
     end
 end
 

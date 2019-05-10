@@ -4,7 +4,7 @@ function lloc = afh_lloc(density, a, b, c, w, u, szl, szr, bb, jx, jy, jz, gamma
 
 n = size(szl,1);
 
-rho1 = feval(density, a, b, c, w, u, szl, szr);
+rho1 = feval(@nqs_density_z, density, a, b, c, w, u, szl, szr);
 
 if abs(rho1) < 1e-10
     lloc = 0;
@@ -44,8 +44,8 @@ for j=1:n
         dr = ((szr(j) == -szr(j+1)) - (szr(j) == szr(j+1)));
     end
     
-    rho_eval1 = feval(density, a, b, c, w, u, szl_eval, szr);
-    rho_eval2 = feval(density, a, b, c, w, u, szl, szr_eval);
+    rho_eval1 = feval(@nqs_density_z, density, a, b, c, w, u, szl_eval, szr);
+    rho_eval2 = feval(@nqs_density_z, density, a, b, c, w, u, szl, szr_eval);
     
     lloc = lloc - 1i*jx*(rho_eval1 - rho_eval2)/rho1;
     
@@ -60,7 +60,7 @@ for j=1:n
         szr_eval = szr;
         szr_eval(j) = 1;
         
-        rho_num = feval(density, a, b, c, w, u, szl_eval, szr_eval);
+        rho_num = feval(@nqs_density_z, density, a, b, c, w, u, szl_eval, szr_eval);
         
         %szl_eval(j) = -1;
         %szr_eval(j) = -1;

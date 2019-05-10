@@ -1,4 +1,4 @@
-function val = kron_density(mat, a, ~, ~, ~, ~, szl, szr)
+function val = kron_density(mat, a, ~, ~, ~, szl, szr)
 % kron_wave Ignores the parameters a and theta and instead pulls the value
 %           out of the vector vec in the product basis corresponding to sz
 
