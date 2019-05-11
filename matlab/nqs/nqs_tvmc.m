@@ -1,4 +1,4 @@
-function [t,psi,a,b,w] = nqs_tvmc(a0, b0, w0, dt, tf)
+function [t,psi,a,b,w,evs] = nqs_tvmc(a0, b0, w0, dt, tf)
 
 num_samps = 1000;
 % h = 1;
@@ -24,10 +24,18 @@ end
 options = odeset('RelTol',1e-3,'AbsTol',1e-3);
 [t,y] = ode45(odes,tvec,y0,options);
 
-psi = zeros(2^n,size(t,1));
+if n < 16
+    psi = zeros(2^n,size(t,1));
+else
+    psi = [];
+end
+evs = zeros(1,size(t,1));
 for i=1:size(t,1)
-    a = y(i,1:n)';
-    b = y(i,n+1:n+m)';
-    w = reshape(y(i,n+m+1:end)',[m,n]);
-    [~,psi(:,i)] = nqs_wave_vec(a, b, w);
+    a = y(i,1:n).';
+    b = y(i,n+1:n+m).';
+    w = reshape(y(i,n+m+1:end).',[m,n]);
+    if n < 16
+        [~,psi(:,i)] = nqs_wave_vec(a, b, w);
+    end
+    evs(1,i) = nqs_ev(@sx_oloc, @nqs_wave, a, b, w, 5*num_samps, num_steps);
 end
