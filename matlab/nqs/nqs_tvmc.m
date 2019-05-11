@@ -1,4 +1,4 @@
-function [t,psi,a,b,w,evs] = nqs_tvmc(a0, b0, w0, dt, tf)
+function [t,psi,y,evs] = nqs_tvmc(a0, b0, w0, dt, tf)
 
 num_samps = 1000;
 % h = 1;
@@ -30,10 +30,11 @@ else
     psi = [];
 end
 evs = zeros(1,size(t,1));
+y = y.';
 for i=1:size(t,1)
-    a = y(i,1:n).';
-    b = y(i,n+1:n+m).';
-    w = reshape(y(i,n+m+1:end).',[m,n]);
+    a = y(1:n,i);
+    b = y(n+1:n+m,i);
+    w = reshape(y(n+m+1:end,i),[m,n]);
     if n < 16
         [~,psi(:,i)] = nqs_wave_vec(a, b, w);
     end

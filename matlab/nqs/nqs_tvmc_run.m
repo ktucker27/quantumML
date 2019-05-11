@@ -29,6 +29,7 @@ m = alpha*n;
 a = (rand(n,1) + 1i*rand(n,1))*1e-1;
 b = (rand(m,1) + 1i*rand(m,1))*1e-1;
 w = (rand(m,n) + 1i*rand(m,n))*1e-1;
+ys = [a;b;reshape(w,[m*n,1])];
 
 if n < 16
     [~,psi] = nqs_wave_vec(a, b, w);
@@ -43,7 +44,8 @@ curr_time = 0;
 rt = 0;
 for i=1:num_saves
     tic();
-    [ti,psin,a,b,w,evsi] = nqs_tvmc(a, b, w, dt, save_time);
+    [a,b,w] = unpack_tvmc(ys(:,end), n, m);
+    [ti,psin,ysi,evsi] = nqs_tvmc(a, b, w, dt, save_time);
     rt = rt + toc();
     
     if n < 16
@@ -56,7 +58,9 @@ for i=1:num_saves
         evs = cat(2, evs, evsi(:,2:end));
     end
     
+    ys = cat(2, ys, ysi(:,2:end));
     t = cat(1,t,ti(2:end) + t(end));
+    
     curr_time = curr_time + save_time;
     save(save_filepath);
     disp([num2str(curr_time), '/', num2str(tfinal), ' in ', num2str(rt), ' seconds']);
