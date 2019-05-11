@@ -16,7 +16,7 @@ for i=1:n
     oloc = oloc + site_contrib(i,wave,a,w,theta,sz);
 end
 
-oloc = oloc/psi_sz;
+oloc = oloc/(2*psi_sz);
 end
 
 function contrib = site_contrib(i,wave,a,w,theta,sz)
