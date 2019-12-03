@@ -1,4 +1,21 @@
 function [pass, all_gm, norms] = gm_comm_test(n)
+% GM_COMM_TEST A unit test for gm_comm to ensure that the returned
+% operators and scalars are correct. This is done by explicitly
+% constructing the matrices in question, performing the commutation
+% operation, and comparing to the explicit construction of the matrix
+% returned by gm_comm.
+%
+% INPUT:
+%     n - Number of levels (2S + 1)
+%
+% OUTPUT: 
+%     pass   - 1 if all tests pass, 0 otherwise
+%     all_gm - Full normalized generalized Gell-Mann matrices.
+%              all_gm(:,:,i) is the ith n x n GM matrix, i = 1:n^2
+%     norms  - norms(i,j) is the norm of the difference between the actual
+%              commutator of GM matrices i and j and the one constructed
+%              from gm_comm output. Should all be practically zero if all
+%              tests pass
 
 TOL = 1e-12;
 
