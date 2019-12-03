@@ -8,9 +8,9 @@ addpath('~/git/quantumML/matlab/nqs/');
 disp('Starting nqs_tvmc_run...');
 
 % Output file
-save_filepath = '/Users/tuckerkj/output/20190506/matlab/nqs_tvmc_exc_run';
+save_filepath = '/Users/tuckerkj/output/20190506/matlab/nqs_tvmc_exc_run_n20_cont';
 
-dt = 0.001;
+dt = 0.0001;
 
 save_time = .004;
 num_saves = 500;
@@ -24,11 +24,11 @@ time_steps_per_save = save_time/dt;
 
 % Initialize to small random a, b, w
 alpha = 1;
-n = 4;
+n = 20;
 m = alpha*n;
-a = (rand(n,1) + 1i*rand(n,1))*1e-1;
-b = (rand(m,1) + 1i*rand(m,1))*1e-1;
-w = (rand(m,n) + 1i*rand(m,n))*1e-1;
+%a = (rand(n,1) + 1i*rand(n,1))*1e-10;
+%b = (rand(m,1) + 1i*rand(m,1))*1e-10;
+%w = (rand(m,n) + 1i*rand(m,n))*1e-10;
 ys = [a;b;reshape(w,[m*n,1])];
 
 if n < 16
