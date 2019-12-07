@@ -31,5 +31,5 @@ for part_idx1 = 1:npart
         end
     end
     
-    yp(start_idx1:start_idx1 + d - 1, 1) = sum1 + sum2;
+    yp(start_idx1:start_idx1 + d - 1, 1) = -1i*(sum1 + sum2);
 end
