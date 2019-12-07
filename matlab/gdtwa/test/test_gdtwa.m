@@ -6,7 +6,7 @@ function pass = test_gdtwa()
 
 pass = 1;
 
-for n = 1:10
+for n = 2:10
     if gm_comm_test(n) ~= 1
         disp(['FAIL: gm_comm_test n = ', num2str(n)]);
         pass = 0;
