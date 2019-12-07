@@ -53,5 +53,5 @@ end
 if norm(norms) > TOL
     pass = 0;
 else
-    disp('PASSED');
+    disp(['gm_comm_test(', num2str(n), ') PASSED']);
 end
