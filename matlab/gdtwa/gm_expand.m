@@ -1,11 +1,22 @@
 function [u, w] = gm_expand(O, n, m)
+% gm_expand Calculate the first and second order generalized Gell-Mann
+% coefficients for the operator O. Assumes O does not have any higher order
+% terms. O is a sparse matrix in the full tensor product space basis
+%
+% INPUT: O - operator to decompose
+%        n - number of levels per particle (dimension of local Hilbert
+%            space)
+%        m - number of particles
+%
+% OUTPUT: u - first order GM coefficients
+%         w - second order GM coefficients
 
 TOL = 1.0e-12;
 
 d = n^2;
 
-u = spare(d*m,1);
-w = spare(d*m, d*m);
+u = sparse(d*m,1);
+w = sparse(d*m, d*m);
 
 [is, js, vs] = find(O);
 
@@ -29,7 +40,7 @@ for ii = 1:size(is,1)
                 continue
             end
             
-            u((part_idx1-1)*d + mu,1) = vs(ii)*c;
+            u((part_idx1-1)*d + mu,1) = u((part_idx1-1)*d + mu,1) + vs(ii)*c;
         end
         
         for part_idx2 = 1:m
@@ -37,7 +48,7 @@ for ii = 1:size(is,1)
                 continue
             end
             
-            for mu = 1:d
+            for mu = 1:d-1
                 [type1, alpha1, beta1] = gm_idx(mu, n);
                 [c1, delta1] = gm_mult(type1, alpha1, beta1, li(part_idx1), n);
                 
@@ -45,7 +56,7 @@ for ii = 1:size(is,1)
                     continue
                 end
                 
-                for nu = 1:d
+                for nu = 1:d-1
                     [type2, alpha2, beta2] = gm_idx(nu, n);
                     [c2, delta2] = gm_mult(type2, alpha2, beta2, li(part_idx2), n);
                     
@@ -61,9 +72,15 @@ for ii = 1:size(is,1)
                         continue
                     end
                     
-                    w((part_idx1-1)*d + mu, (part_idx2-1)*d + nu) = vs(ii)*c1*c2;
+                    w((part_idx1-1)*d + mu, (part_idx2-1)*d + nu) = w((part_idx1-1)*d + mu, (part_idx2-1)*d + nu) + vs(ii)*c1*c2;
                 end
             end
         end
     end
 end
+
+% TODO - Figure out the w normalization and how to avoid over/underflow for
+% larger systems
+u = u/n^(m-1);
+%w = w/n^(2*(m-1))*n^m/2;
+w = w/(n^(m-2)*2);
