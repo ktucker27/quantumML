@@ -8,9 +8,9 @@ pass = 1;
 
 disp('TESTS:');
 
-disp('test_tensor:');
-if test_tensor() ~= 1
-    disp('FAIL: test_tensor');
+disp('tensor_test:');
+if tensor_test() ~= 1
+    disp('FAIL: tensor_test');
     pass = 0;
 end
 

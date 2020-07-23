@@ -1,4 +1,4 @@
-function pass = test_tensor()
+function pass = tensor_test()
 pass = 1;
 
 disp('  scalar_contraction');
