@@ -1,4 +1,4 @@
-classdef Tensor
+classdef Tensor < handle
     properties
         A
     end
@@ -13,14 +13,14 @@ classdef Tensor
             r2 = ndims(T.A);
             
             if min(r1 >= indices(:,1)) == 0 || min(r2 >= indices(:,2)) == 0
-                disp('Index exceeds tensor rank');
+                disp('ERROR - Index exceeds tensor rank');
                 return
             end
             
             s1 = size(obj.A);
             s2 = size(T.A);
             if norm(s1(indices(:,1)') - s2(indices(:,2)')) > 0
-                disp('Contracted index dimension mismatch');
+                disp('ERROR - Contracted index dimension mismatch');
                 return
             end
             cdim = s1(indices(:,1)');
@@ -76,17 +76,18 @@ classdef Tensor
         end
         function d = rank(obj)
             s = size(obj.A);
-            if length(s) > 2
+            if min(s(:)) == 0
+                d = -1;
+            elseif length(s) > 2
                 d = length(s);
-            elseif s(1) == 0
-                d = 0;
             else
                 d = 2;
-                if s(1) == 1
-                    d = d - 1;
-                end
                 if s(2) == 1
                     d = d - 1;
+                    
+                    if s(1) == 1
+                        d = d - 1;
+                    end
                 end
             end
         end
