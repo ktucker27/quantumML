@@ -28,6 +28,9 @@ classdef Tensor
             s1(indices(:,1)) = [];
             s2(indices(:,2)) = [];
             csize = cat(2,s1,s2);
+            if min(size(csize)) == 0
+                csize = 1;
+            end
             C = Tensor(zeros(csize));
             
             iter = IndexIter(csize);
@@ -39,7 +42,7 @@ classdef Tensor
                     citeridx = 1;
                     idx1 = [];
                     for ii=1:ndims(obj.A)
-                        if size(find(indices(:,1) == ii),2) == 0
+                        if min(size(find(indices(:,1) == ii))) == 0
                             idx1 = cat(2, idx1, iter.curridx(iteridx));
                             iteridx = iteridx + 1;
                         else
@@ -52,7 +55,7 @@ classdef Tensor
                     citeridx = 1;
                     idx2 = [];
                     for ii=1:ndims(T.A)
-                        if size(find(indices(:,2) == ii),2) == 0
+                        if min(size(find(indices(:,2) == ii))) == 0
                             idx2 = cat(2, idx2, iter.curridx(iteridx));
                             iteridx = iteridx + 1;
                         else
