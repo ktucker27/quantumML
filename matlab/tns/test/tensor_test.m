@@ -101,6 +101,8 @@ function pass = group_test()
 
 pass = 1;
 
+tol = 1e-12;
+
 A = rand(3,3);
 T1 = Tensor(A);
 T2 = T1.group({[1,2]});
@@ -112,7 +114,7 @@ if ndims(v) ~= ndims(T2.A) || norm(size(v) - size(T2.A)) ~= 0
     return
 end
 
-if norm(T2.A - v) > 1e-12
+if norm(T2.A - v) > tol
     disp('FAIL: Grouped tensor differs from reshaped matrix');
     disp('Reshaped matrix:');
     disp(v);
@@ -120,4 +122,31 @@ if norm(T2.A - v) > 1e-12
     disp(T2.A);
     pass = 0;
 end
+
+A = rand(3,3,3);
+B = zeros(9,3);
+for jj=1:3
+    B(1:3,jj) = A(:,jj,1);
+    B(4:6,jj) = A(:,jj,2);
+    B(7:9,jj) = A(:,jj,3);
+end
+
+T1 = Tensor(A);
+T2 = T1.group({[1,3], 2});
+
+if ndims(B) ~= ndims(T2.A) || norm(size(B) - size(T2.A)) ~= 0
+    disp(['FAIL: Expected size [', num2str(size(B)), '], got [', num2str(size(T2.A)), ']']);
+    pass = 0;
+    return
+end
+
+if norm(T2.A - B) > tol
+    disp('FAIL: Grouped tensor differs from reshaped matrix');
+    disp('Reshaped matrix:');
+    disp(B);
+    disp('Tensor:');
+    disp(T2.A);
+    pass = 0;
+end
+
 end
