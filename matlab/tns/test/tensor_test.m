@@ -19,6 +19,12 @@ if group_test() ~= 1
     pass = 0;
 end
 
+disp('  svd_test');
+if svd_test() ~= 1
+    disp('FAIL: tensor_test.group_test');
+    pass = 0;
+end
+
 end
 
 function pass = scalar_contraction()
@@ -146,6 +152,23 @@ if norm(T2.A - B) > tol
     disp(B);
     disp('Tensor:');
     disp(T2.A);
+    pass = 0;
+end
+
+end
+
+function pass = svd_test()
+
+pass = 1;
+
+A = rand(10,5);
+T1 = Tensor(A);
+[TU,TS,TV] = T1.svd();
+
+T2 = TU.contract(TS, [2,1]).contract(TV.conjugate(), [2,2]);
+
+if ~T1.equals(T2, 1e-12)
+    disp('FAIL: SVD contraction does not equal original tensor');
     pass = 0;
 end
 

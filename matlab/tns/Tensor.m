@@ -60,6 +60,9 @@ classdef Tensor < handle
             TS = Tensor(s);
             TV = Tensor(v);
         end
+        function T = conjugate(obj)
+            T = Tensor(conj(obj.A));
+        end
         function C = contract(obj, T, indices)
             r1 = ndims(obj.A);
             r2 = ndims(T.A);
