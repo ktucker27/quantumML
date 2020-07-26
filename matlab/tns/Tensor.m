@@ -10,9 +10,7 @@ classdef Tensor < handle
         end
         function T = group(obj, idxlist)
             if size(idxlist,1) ~= 1
-                disp('ERROR - Expected idxlist to be a row vector of cells');
-                T = Tensor();
-                return
+                error('Expected idxlist to be a row vector of cells');
             end
             
             % Determine the dimesnions of the new tensor
@@ -110,8 +108,7 @@ classdef Tensor < handle
         end
         function [TU,TS,TV] = svd(obj)
             if obj.rank() ~= 2
-                disp('ERROR - SVD can only be performed on a rank 2 tensor');
-                return
+                error('SVD can only be performed on a rank 2 tensor');
             end
             
             [u,s,v] = svd(obj.A, 'econ');
@@ -128,15 +125,13 @@ classdef Tensor < handle
             r2 = ndims(T.A);
             
             if min(r1 >= indices(:,1)) == 0 || min(r2 >= indices(:,2)) == 0
-                disp('ERROR - Index exceeds tensor rank');
-                return
+                error('Index exceeds tensor rank');
             end
             
             s1 = size(obj.A);
             s2 = size(T.A);
             if norm(s1(indices(:,1)') - s2(indices(:,2)')) > 0
-                disp('ERROR - Contracted index dimension mismatch');
-                return
+                error('Contracted index dimension mismatch');
             end
             cdim = s1(indices(:,1)');
             

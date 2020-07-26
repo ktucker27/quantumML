@@ -19,8 +19,7 @@ classdef MPS < handle
             %        otherwise they will be periodic
             
             if n < 2
-                disp('ERROR - MPS requires at least 2 sites');
-                return;
+                error('MPS requires at least 2 sites');
             end
             
             if obc == 1
@@ -32,15 +31,13 @@ classdef MPS < handle
             if norm(size(bdim) - ones(1,2)) == 0
                 bdim = bdim*ones(1,n-1);
             elseif norm(size(bdim) - [1,n-1]) ~= 0
-                disp('ERROR - bdim must be a scalar or 1xn-1 vector');
-                return
+                error('bdim must be a scalar or 1xn-1 vector');
             end
             
             if norm(size(pdim) - ones(1,2)) == 0
                 pdim = pdim*ones(1,n);
             elseif norm(size(pdim) - [1,n]) ~= 0
-                disp('ERROR - pdim must be a scalar or 1xn vector');
-                return
+                error('pdim must be a scalar or 1xn vector');
             end
             
             obj.tensors = {};
@@ -66,9 +63,7 @@ classdef MPS < handle
         
         function psi = eval(obj,sigma)
             if norm(size(sigma) - size(obj.tensors)) ~= 0
-                disp('ERROR - Index vector has incorrect rank');
-                psi = 0;
-                return
+                error('Index vector has incorrect rank');
             end
             
             psi = obj.tensors{1}.A(:,:,sigma(1))*obj.tensors{2}.A(:,:,sigma(2));
