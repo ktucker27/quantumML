@@ -8,6 +8,58 @@ classdef Tensor < handle
                 obj.A = T;
             end
         end
+        function T = group(obj, idxlist)
+            if size(idxlist,1) ~= 1
+                disp('ERROR - Expected idxlist to be a row vector of cells');
+                T = Tensor();
+                return
+            end
+            
+            % Determine the dimesnions of the new tensor
+            dims = size(obj.A);
+            
+            tdims = ones(size(idxlist));
+            for ii=1:size(tdims,2)
+                group_indices = idxlist{ii};
+                for jj=1:size(group_indices,2)
+                    tdims(ii) = tdims(ii)*dims(group_indices(jj));
+                end
+            end
+            
+            % Create and populate the values of the new tensor
+            if size(tdims, 2) == 1
+                T = Tensor(zeros(tdims,1));
+            else
+                T = Tensor(zeros(tdims));
+            end
+            iter = IndexIter(tdims);
+            while ~iter.end()
+                origidx = zeros(size(dims));
+                for ii=1:size(iter.curridx,2)
+                    group_idx = grouped_to_orig(iter.curridx(ii), dims(idxlist{ii}));
+                    origidx(idxlist{ii}) = group_idx;
+                end
+                origidx = num2cell(origidx);
+                newidx = num2cell(iter.curridx);
+                T.A(newidx{:}) = obj.A(origidx{:});
+                iter.next();
+            end
+        end
+        function T = split(obj, idxlist)
+            % TODO
+        end
+        function [TU,TS,TV] = svd(obj)
+            if obj.rank() ~= 2
+                disp('ERROR - SVD can only be performed on a rank 2 tensor');
+                return
+            end
+            
+            [u,s,v] = svd(obj.A, 'econ');
+            
+            TU = Tensor(u);
+            TS = Tensor(s);
+            TV = Tensor(v);
+        end
         function C = contract(obj, T, indices)
             r1 = ndims(obj.A);
             r2 = ndims(T.A);
@@ -100,4 +152,20 @@ classdef Tensor < handle
             e = (max(D(:)) < tol);
         end
     end
+end
+
+function orig_indices = grouped_to_orig(grouped_idx, orig_dim)
+if size(orig_dim,2) == 1
+    orig_indices = grouped_idx;
+    return
+end
+
+grouped_idx = grouped_idx - 1;
+orig_indices = zeros(size(orig_dim));
+val = prod(orig_dim);
+for ii=size(orig_dim,2):-1:1
+    val = val/orig_dim(ii);
+    orig_indices(ii) = floor(grouped_idx/val) + 1;
+    grouped_idx = grouped_idx - (orig_indices(ii)-1)*val;
+end
 end

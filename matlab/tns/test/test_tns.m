@@ -7,6 +7,7 @@ function pass = test_tns()
 pass = 1;
 
 disp('TESTS:');
+disp(' ');
 
 disp('tensor_test:');
 if tensor_test() ~= 1
