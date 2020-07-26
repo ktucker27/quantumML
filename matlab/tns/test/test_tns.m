@@ -17,6 +17,14 @@ end
 
 disp(' ')
 
+disp('mps_test:');
+if mps_test() ~= 1
+    disp('FAIL: mps_test');
+    pass = 0;
+end
+
+disp(' ')
+
 if pass == 1
     disp('test_tns PASSED');
 else
