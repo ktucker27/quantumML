@@ -26,17 +26,18 @@ classdef Tensor < handle
                 end
             end
             
-            % Create and populate the values of the new tensor
-            if size(tdims, 2) == 1
-                T = Tensor(zeros(tdims,1));
-            else
-                T = Tensor(zeros(tdims));
+            if isscalar(tdims)
+                tdims = [tdims,1];
             end
+            
+            % Create and populate the values of the new tensor
+            T = Tensor(zeros(tdims));
+            
             iter = IndexIter(tdims);
             while ~iter.end()
                 origidx = zeros(size(dims));
-                for ii=1:size(iter.curridx,2)
-                    group_idx = grouped_to_orig(iter.curridx(ii), dims(idxlist{ii}));
+                for ii=1:size(idxlist,2)
+                    group_idx = grouped_to_split(iter.curridx(ii), dims(idxlist{ii}));
                     origidx(idxlist{ii}) = group_idx;
                 end
                 origidx = num2cell(origidx);
@@ -46,7 +47,66 @@ classdef Tensor < handle
             end
         end
         function T = split(obj, idxlist)
-            % TODO
+            % SPLIT: Create a new tensor splitting this tensor's indices
+            % according to idxlist
+            %
+            % idxlist{i} = Destination for the ith index in the new tensor.
+            % If a scalar is provided, it will indicate the destination
+            % index. Otherwise, a matrix with two rows is expected. The
+            % first row is the destination indices for the split, while the
+            % second is the dimensions
+            
+            if size(idxlist,1) ~= 1
+                error('Expected idxlist to be a row vector of cells');
+            end
+            
+            % Determine the dimesnions of the new tensor
+            dims = size(obj.A);
+            
+            tdims = [];
+            for ii=1:size(idxlist,2)
+                split_indices = idxlist{ii};
+                split_size = size(split_indices);
+                
+                if ~isequal(split_size, [1,1]) && split_size(1) ~= 2
+                    error('Split idxlist value must be a scalar or matrix with two rows');
+                end
+                
+                if ~isscalar(split_indices) && prod(split_indices(2,:)) ~= dims(ii)
+                    error('Product of split dimensions does not equal original dimension');
+                end
+                
+                if isscalar(split_indices)
+                    tdims(split_indices) = dims(ii); %#ok<AGROW>
+                else
+                    tdims(split_indices(1,:)) = split_indices(2,:); %#ok<AGROW>
+                end
+            end
+            
+            if isscalar(tdims)
+                tdims = [tdims,1];
+            end
+            
+            % Create and populate the values of the new tensor
+            T = Tensor(zeros(tdims));
+            
+            iter = IndexIter(dims);
+            while ~iter.end()
+                newidx = zeros(size(tdims));
+                for ii=1:size(idxlist,2)
+                    if isscalar(idxlist{ii})
+                        newidx(idxlist{ii}) = iter.curridx(ii);
+                    else
+                        newidx(idxlist{ii}(1,:)) = grouped_to_split(iter.curridx(ii), idxlist{ii}(2,:));
+                    end
+                end
+                newidx = num2cell(newidx);
+                origidx = num2cell(iter.curridx);
+                
+                T.A(newidx{:}) = obj.A(origidx{:});
+                
+                iter.next();
+            end
         end
         function [TU,TS,TV] = svd(obj)
             if obj.rank() ~= 2
@@ -157,7 +217,7 @@ classdef Tensor < handle
     end
 end
 
-function orig_indices = grouped_to_orig(grouped_idx, orig_dim)
+function orig_indices = grouped_to_split(grouped_idx, orig_dim)
 if size(orig_dim,2) == 1
     orig_indices = grouped_idx;
     return
