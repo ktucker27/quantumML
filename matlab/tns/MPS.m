@@ -23,7 +23,7 @@ classdef MPS < handle
                     continue
                 end
                 
-                if size(tensors{ii-1}.A,2) ~= size(T.A,1)
+                if tensors{ii-1}.dim(2) ~= T.dim(1)
                     error(['Bond dimension mismatch between sites ', num2str(ii-1), ' and ', num2str(ii)]);
                 end
             end
