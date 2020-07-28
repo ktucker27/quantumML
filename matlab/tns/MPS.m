@@ -54,6 +54,9 @@ classdef MPS < handle
                 psi = trace(psi);
             end
         end
+        function n = num_sites(obj)
+            n = size(obj.tensors,2);
+        end
     end
     methods(Static)
         function obj = mps_zeros(n,bdim,pdim,obc)
@@ -96,7 +99,7 @@ classdef MPS < handle
                     end
                 elseif ii == n
                     if obc == 1
-                        t = Tensor(zeros(bdim(n-1),1,pdim(n)));
+                        t = Tensor(zeros(bdim(n-1),pdim(n)));
                     else
                         t = Tensor(zeros(bdim(n-1),bdim(1),pdim(n)));
                     end
