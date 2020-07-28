@@ -1,7 +1,6 @@
 classdef MPS < handle
     properties
         tensors
-        obc
     end
     methods
         function obj = MPS(tensors)
@@ -11,20 +10,13 @@ classdef MPS < handle
             
             obj.tensors = tensors;
             
-            if tensors{end}.rank() == 2
-                obj.obc = 1;
-            else
-                obj.obc = 0;
-            end
-            
             % Validate the incoming tensors
             n = size(tensors,2);
             for ii=1:n
                 T = tensors{ii};
-                if ii < n || obj.obc ~= 1
-                    if T.rank() ~= 3
-                        error(['Expected rank 3 tensor at site ', num2str(ii)]);
-                    end
+                
+                if T.rank() ~= 3
+                    error(['Expected rank 3 tensor at site ', num2str(ii)]);
                 end
                 
                 if ii == 1
@@ -37,22 +29,16 @@ classdef MPS < handle
             end
         end
         function psi = eval(obj,sigma)
-            if norm(size(sigma) - size(obj.tensors)) ~= 0
+            if ~isequal(size(sigma), size(obj.tensors))
                 error('Index vector has incorrect rank');
             end
             
-            psi = obj.tensors{1}.A(:,:,sigma(1))*obj.tensors{2}.A(:,:,sigma(2));
-            for ii=3:size(obj.tensors,2)
-                if ii == size(obj.tensors,2) && obj.obc == 1
-                    psi = psi*obj.tensors{ii}.A(:,sigma(ii));
-                else
-                    psi = psi*obj.tensors{ii}.A(:,:,sigma(ii));
-                end
+            psi = obj.tensors{1}.A(:,:,sigma(1));
+            for ii=2:size(obj.tensors,2)
+                psi = psi*obj.tensors{ii}.A(:,:,sigma(ii));
             end
             
-            if obj.obc ~= 1
-                psi = trace(psi);
-            end
+            psi = trace(psi);
         end
         function n = num_sites(obj)
             n = size(obj.tensors,2);
@@ -99,7 +85,7 @@ classdef MPS < handle
                     end
                 elseif ii == n
                     if obc == 1
-                        t = Tensor(zeros(bdim(n-1),pdim(n)));
+                        t = Tensor(zeros(bdim(n-1),1,pdim(n)));
                     else
                         t = Tensor(zeros(bdim(n-1),bdim(1),pdim(n)));
                     end

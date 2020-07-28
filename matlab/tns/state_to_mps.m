@@ -26,7 +26,7 @@ for ii=1:n-1
     if ii < n-1
         C = TSVdagger.split({1,[2,3;pdim,size(TSVdagger.A,2)/pdim]});
     else
-        ms = cat(2, ms, {TSVdagger});
+        ms = cat(2, ms, {TSVdagger.split({1,[2,3;1,size(TSVdagger.A,2)]})});
     end
 end
 

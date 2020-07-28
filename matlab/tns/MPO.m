@@ -1,7 +1,6 @@
 classdef MPO < handle
     properties
         tensors
-        obc
     end
     methods
         function obj = MPS(tensors)
@@ -11,20 +10,13 @@ classdef MPO < handle
             
             obj.tensors = tensors;
             
-            if tensors{end}.rank() == 3
-                obj.obc = 1;
-            else
-                obj.obc = 0;
-            end
-            
             % Validate the incoming tensors
             n = size(tensors,2);
             for ii=1:n
                 T = tensors{ii};
-                if ii < n || obj.obc ~= 1
-                    if T.rank() ~= 4
-                        error(['Expected rank 4 tensor at site ', num2str(ii)]);
-                    end
+                
+                if T.rank() ~= 4
+                    error(['Expected rank 4 tensor at site ', num2str(ii)]);
                 end
                 
                 if ii == 1
