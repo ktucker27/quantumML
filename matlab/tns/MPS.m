@@ -62,7 +62,7 @@ classdef MPS < handle
             end
             
             if T.rank() ~= 0
-                T = T.trace([1,3;2,4]);
+                T = T.trace([1,2;3,4]);
                 
                 if T.rank() ~= 0
                     error('Expected a scalar at the end of an inner product');
