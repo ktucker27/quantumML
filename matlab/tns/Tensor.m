@@ -240,7 +240,7 @@ classdef Tensor < handle
             end
             
             d = size(obj.A);
-            if ismatrix(d) && d(2) == 1
+            if numel(d) == 2 && d(2) == 1
                 d(2) = [];
             end
         end

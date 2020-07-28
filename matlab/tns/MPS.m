@@ -28,6 +28,13 @@ classdef MPS < handle
                 end
             end
         end
+        function mps = dagger(obj)
+            ms = {};
+            for ii=1:obj.num_sites()
+                ms = cat(2, ms, {obj.tensors{ii}.conjugate()});
+            end
+            mps = MPS(ms);
+        end
         function psi = eval(obj,sigma)
             if ~isequal(size(sigma), size(obj.tensors))
                 error('Index vector has incorrect rank');
@@ -42,6 +49,24 @@ classdef MPS < handle
         end
         function n = num_sites(obj)
             n = size(obj.tensors,2);
+        end
+        function psi = state_vector(obj)
+            pdim = obj.pdim();
+            
+            iter = IndexIter(pdim);
+            psi = zeros(prod(pdim),1);
+            ii = 1;
+            while ~iter.end()
+                psi(ii,1) = obj.eval(iter.curridx);
+                ii = ii + 1;
+                iter.reverse_next();
+            end
+        end
+        function d = pdim(obj)
+            d = zeros(1, obj.num_sites());
+            for ii=1:size(d,2)
+                d(ii) = obj.tensors{ii}.dim(3);
+            end
         end
     end
     methods(Static)

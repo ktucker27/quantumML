@@ -7,6 +7,12 @@ if eval_test(6, 3) ~= 1
     pass = 0;
 end
 
+disp('  conj_test');
+if conj_test(4, 3) ~= 1
+    disp('FAIL: mps_test.conj_test');
+    pass = 0;
+end
+
 end
 
 function pass = eval_test(n, pdim)
@@ -20,17 +26,31 @@ psi = psi/norm(psi);
 
 mps = state_to_mps(psi, n, pdim);
 
-iter = IndexIter(pdim*ones(1,n));
-psi2 = zeros(pdim^n,1);
-ii = 1;
-while ~iter.end()
-psi2(ii,1) = mps.eval(flip(iter.curridx));
-ii = ii + 1;
-iter.next();
-end
+psi2 = mps.state_vector();
 
 if norm(psi - psi2) > tol
     disp('FAIL: MPS state does not match original state');
+    pass = 0;
+end
+
+end
+
+function pass = conj_test(n, pdim)
+
+pass = 1;
+
+tol = 1e-12;
+
+psi = rand(pdim^n,1) + 1i*rand(pdim^n,1);
+psi = psi/norm(psi);
+
+mps = state_to_mps(psi, n, pdim);
+mps = mps.dagger();
+
+psi2 = mps.state_vector();
+
+if norm(psi - conj(psi2)) > tol
+    disp('FAIL: Conjugate MPS state does not match original state');
     pass = 0;
 end
 

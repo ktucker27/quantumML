@@ -28,5 +28,19 @@ classdef IndexIter < handle
                 end
             end
         end
+        function reverse_next(obj)
+            for ii=size(obj.curridx,2):-1:1
+                obj.curridx(ii) = obj.curridx(ii) + 1;
+                if obj.curridx(ii) <= obj.dim(ii)
+                    break;
+                end
+                
+                if ii == 1
+                    obj.curridx = obj.endidx();
+                else
+                    obj.curridx(ii) = 1;
+                end
+            end
+        end
     end
 end
