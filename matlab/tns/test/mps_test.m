@@ -81,4 +81,15 @@ if abs(psi2'*psi - val) > tol
     pass = 0;
 end
 
+% Test periodic boundary conditions
+if n >= 4
+    mps2 = mps.substate([2,3]);
+    psi = mps2.state_vector();
+    val = mps2.inner(mps2);
+    if abs(psi'*psi - val) > tol
+        disp(['FAIL: Inner product for PBC returned ', num2str(val), ' expected ', num2str(psi'*psi)]);
+        pass = 0;
+    end
+end
+
 end
