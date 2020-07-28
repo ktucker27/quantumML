@@ -201,6 +201,24 @@ classdef Tensor < handle
                 end
             end
         end
+        function d = dims(obj)
+            if isscalar(obj.A)
+                d = 0;
+                return
+            end
+            
+            d = size(obj.A);
+            if ismatrix(d) && d(2) == 1
+                d(2) = [];
+            end
+        end
+        function d = dim(obj, idx)
+            dv = obj.dims();
+            d = dv(idx);
+        end
+        function A = matrix(obj)
+            A = obj.A;
+        end
         function e = equals(obj, T, tol)
             e = (obj.rank() == T.rank());
             if ~e

@@ -19,14 +19,14 @@ for ii=1:n-1
     
     [TU, TS, TV] = T2.svd();
     
-    ms = cat(2, ms, {TU.split({[1,3;size(TU.A,1)/pdim,pdim],2})});
+    ms = cat(2, ms, {TU.split({[1,3;TU.dim(1)/pdim,pdim],2})});
     
     TSVdagger = TS.contract(TV.conjugate(), [2,2]);
     
     if ii < n-1
-        C = TSVdagger.split({1,[2,3;pdim,size(TSVdagger.A,2)/pdim]});
+        C = TSVdagger.split({1,[2,3;pdim,TSVdagger.dim(2)/pdim]});
     else
-        ms = cat(2, ms, {TSVdagger.split({1,[2,3;1,size(TSVdagger.A,2)]})});
+        ms = cat(2, ms, {TSVdagger.split({1,[2,3;1,TSVdagger.dim(2)]})});
     end
 end
 

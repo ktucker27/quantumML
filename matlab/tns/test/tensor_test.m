@@ -257,20 +257,20 @@ function pass = compare_tensor_matrix(T, A, tol)
 pass = 1;
 
 % Test rank and dimension
-if ~isequal(size(A), size(T.A))
-    disp(['FAIL: Expected size [', num2str(size(A)), '], got [', num2str(size(T.A)), ']']);
+if ~isequal(size(A), size(T.matrix()))
+    disp(['FAIL: Expected size [', num2str(size(A)), '], got [', num2str(size(T.matrix())), ']']);
     pass = 0;
     return
 end
 
 % Test values
-diffmat = abs(T.A - A);
+diffmat = abs(T.matrix() - A);
 if max(diffmat(:)) > tol
     disp('FAIL: Tensor values differ from matrix');
     disp('Matrix:');
     disp(A);
     disp('Tensor:');
-    disp(T.A);
+    disp(T.matrix());
     pass = 0;
 end
 
