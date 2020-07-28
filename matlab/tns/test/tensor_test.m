@@ -49,11 +49,11 @@ tc = Tensor(zeros(3,3));
 td = Tensor(zeros(3,3,3));
 for i=1:3
 for j=1:3
-ta.A(i,j) = (i-1)^2 - 2*(j-1);
-tc.A(i,j) = (j-1);
+ta.set([i,j], (i-1)^2 - 2*(j-1));
+tc.set([i,j], (j-1));
 for k=1:3
-tb.A(i,j,k) = -3^(i-1)*(j-1) + (k-1);
-td.A(i,j,k) = (i-1)*(j-1)*(k-1);
+tb.set([i,j,k], -3^(i-1)*(j-1) + (k-1));
+td.set([i,j,k], (i-1)*(j-1)*(k-1));
 end
 end
 end
@@ -67,8 +67,8 @@ if tabdc.rank() ~= 0
     return
 end
 
-if tabdc.A ~= 1080
-    disp(['FAIL: Expected value of 1080, got ', num2str(tabdc.A)]);
+if tabdc.get([]) ~= 1080
+    disp(['FAIL: Expected value of 1080, got ', num2str(tabdc.get([]))]);
     pass = 0;
     return
 end
@@ -130,7 +130,7 @@ if ~T1.equals(T2, tol)
     pass = 0;
 end
 
-T2.A(1,1) = T2.A(1,1) + 0.5*tol;
+T2.set(1, T2.get(1) + 0.5*tol);
 if ~T1.equals(T2, tol)
     disp('FAIL - Equality test with tensors within tolerance failed');
     pass = 0;

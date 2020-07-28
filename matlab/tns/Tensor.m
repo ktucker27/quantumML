@@ -8,6 +8,38 @@ classdef Tensor < handle
                 obj.A = T;
             end
         end
+        function set(obj, idx, val)
+            if numel(idx) ~= obj.rank()
+                error(['Received ', num2str(numel(idx)), ' indices for tensor of rank ', num2str(obj.rank())]);
+            end
+            
+            while numel(idx) < numel(size(obj.A))
+                idx = cat(2, idx, 1);
+            end
+            
+            if min(idx <= size(obj.A)) == 0
+                error('Tensor.set received index out of range');
+            end
+            
+            idx = num2cell(idx);
+            obj.A(idx{:}) = val;
+        end
+        function val = get(obj, idx)
+            if numel(idx) ~= obj.rank()
+                error(['Received ', num2str(numel(idx)), ' indices for tensor of rank ', num2str(obj.rank())]);
+            end
+            
+            while numel(idx) < numel(size(obj.A))
+                idx = cat(2, idx, 1);
+            end
+            
+            if min(idx <= size(obj.A)) == 0
+                error('Tensor.set received index out of range');
+            end
+            
+            idx = num2cell(idx);
+            val = obj.A(idx{:});
+        end
         function T = group(obj, idxlist)
             if size(idxlist,1) ~= 1
                 error('Expected idxlist to be a row vector of cells');
