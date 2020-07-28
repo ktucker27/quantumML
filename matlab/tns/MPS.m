@@ -19,14 +19,22 @@ classdef MPS < handle
                     error(['Expected rank 3 tensor at site ', num2str(ii)]);
                 end
                 
+                iim1 = ii-1;
                 if ii == 1
-                    continue
+                    iim1 = n;
                 end
                 
-                if tensors{ii-1}.dim(2) ~= T.dim(1)
+                if tensors{iim1}.dim(2) ~= T.dim(1)
                     error(['Bond dimension mismatch between sites ', num2str(ii-1), ' and ', num2str(ii)]);
                 end
             end
+        end
+        function mps = substate(obj, indices)
+            ms = {};
+            for ii=1:size(indices,2)
+                ms = cat(2, ms, {Tensor(obj.tensors{indices(ii)}.matrix())});
+            end
+            mps = MPS(ms);
         end
         function mps = dagger(obj)
             ms = {};
@@ -53,15 +61,15 @@ classdef MPS < handle
                 end
             end
             
-            if T.rank() == 0
-                val = T.matrix();
-            else
+            if T.rank() ~= 0
                 T = T.trace([1,3;2,4]);
                 
                 if T.rank() ~= 0
                     error('Expected a scalar at the end of an inner product');
                 end
             end
+            
+            val = T.matrix();
         end
         function psi = eval(obj,sigma)
             if ~isequal(size(sigma), size(obj.tensors))
