@@ -37,6 +37,12 @@ if svd_test() ~= 1
     pass = 0;
 end
 
+disp('  trace_test');
+if trace_test() ~= 1
+    disp('FAIL: tensor_test.trace_test');
+    pass = 0;
+end
+
 end
 
 function pass = scalar_contraction()
@@ -247,6 +253,23 @@ T2 = TU.contract(TS, [2,1]).contract(TV.conjugate(), [2,2]);
 
 if ~T1.equals(T2, 1e-12)
     disp('FAIL: SVD contraction does not equal original tensor');
+    pass = 0;
+end
+
+end
+
+function pass = trace_test()
+
+pass = 1;
+
+tol = 1e-12;
+
+A = rand(3,3);
+T = Tensor(A);
+T2 = T.trace([1,2]);
+
+if ~compare_tensor_matrix(T2, trace(A), tol)
+    disp('FAIL: Trace comparison failed');
     pass = 0;
 end
 

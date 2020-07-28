@@ -35,6 +35,34 @@ classdef MPS < handle
             end
             mps = MPS(ms);
         end
+        function val = inner(obj, mps)
+            if mps.num_sites() ~= obj.num_sites()
+                error('Inner product attempted between states of different size');
+            end
+            
+            mps = mps.dagger();
+            
+            n = obj.num_sites();
+            T = obj.tensors{1}.contract(mps.tensors{1}, [3,3]);
+            for ii=2:n
+                T = T.contract(obj.tensors{ii}, [2,1]);
+                T = T.contract(mps.tensors{ii}, [3,1;5,3]);
+                
+                if ii ~= n || T.rank() > 0
+                    T = T.split({1,3,2,4});
+                end
+            end
+            
+            if T.rank() == 0
+                val = T.matrix();
+            else
+                T = T.trace([1,3;2,4]);
+                
+                if T.rank() ~= 0
+                    error('Expected a scalar at the end of an inner product');
+                end
+            end
+        end
         function psi = eval(obj,sigma)
             if ~isequal(size(sigma), size(obj.tensors))
                 error('Index vector has incorrect rank');

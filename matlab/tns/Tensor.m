@@ -216,6 +216,56 @@ classdef Tensor < handle
                 iter.next();
             end
         end
+        function C = trace(obj, indices)
+            r = ndims(obj.A);
+            
+            if min(r >= indices(:,1)) == 0 || min(r >= indices(:,2)) == 0
+                error('Index exceeds tensor rank');
+            end
+            
+            s = size(obj.A);
+            if norm(s(indices(:,1)') - s(indices(:,2)')) > 0
+                error('Contracted index dimension mismatch');
+            end
+            cdim = s(indices(:,1)');
+            
+            s(reshape(indices, 1, [])) = [];
+            csize = s;
+            if min(size(csize)) == 0
+                csize = 1;
+            end
+            C = Tensor(zeros(csize));
+            
+            iter = IndexIter(csize);
+            
+            while ~iter.end()
+                citer = IndexIter(cdim);
+                while ~citer.end()
+                    iteridx = 1;
+                    idx1 = [];
+                    for ii=1:ndims(obj.A)
+                        leftidx = find(indices(:,1) == ii);
+                        rightidx = find(indices(:,2) == ii);
+                        if isscalar(leftidx)
+                            idx1 = cat(2, idx1, citer.curridx(leftidx));
+                        elseif isscalar(rightidx)
+                            idx1 = cat(2, idx1, citer.curridx(rightidx));
+                        else
+                            idx1 = cat(2, idx1, iter.curridx(iteridx));
+                            iteridx = iteridx + 1;
+                        end
+                    end
+                    idx1 = num2cell(idx1);
+                    
+                    idx3 = num2cell(iter.curridx);
+                    C.A(idx3{:}) = C.A(idx3{:}) + obj.A(idx1{:});
+                    
+                    citer.next();
+                end
+                
+                iter.next();
+            end
+        end
         function d = rank(obj)
             s = size(obj.A);
             if min(s(:)) == 0
