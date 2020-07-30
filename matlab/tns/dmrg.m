@@ -65,14 +65,14 @@ for itidx=1:2*maxit
             
             if ii < n
                 % Update the next tensor
-                next_m = TS.contract(TV.dagger(), [2,1]);
+                next_m = TS.contract(TV.conjugate(), [2,2]);
                 next_m = next_m.contract(ms{nextidx},[2,1]);
             end
         else
             % Right normalize
             M2 = M2.group({1,[2,3]});
             [TU, TS, TV] = M2.svd();
-            new_m = TV.dagger().split({1,[2,3;mdims([2,3])]});
+            new_m = TV.conjugate().split({[2,3;mdims([2,3])],1});
             
             if ii > 1
                 % Update the next tensor
