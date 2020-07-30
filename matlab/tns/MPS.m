@@ -1,6 +1,12 @@
 classdef MPS < handle
     properties
         tensors
+        % tensors: A cell row vector of rank 3 tensors indexed as follows
+        %     ___
+        % 1__|   |__2
+        %    |___|
+        %      |
+        %      3
     end
     methods
         function obj = MPS(tensors)
