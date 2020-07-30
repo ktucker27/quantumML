@@ -32,10 +32,18 @@ for itidx=1:2*maxit
         nextidx = ii + idxinc;
         
         % Contract the MPO state with R
-        A = mpo.tensors{ii}.contract(R{ii}.squeeze(), [2,2]);
+        TR = R{ii};
+        if ii < n
+            TR = TR.squeeze();
+        end
+        A = mpo.tensors{ii}.contract(TR, [2,2]);
         
         % Contract the result with L
-        A = A.contract(L{ii}.squeeze(), [1,2]);
+        TL = L{ii};
+        if ii > 1
+            TL = TL.squeeze();
+        end
+        A = A.contract(TL, [1,2]);
         
         % Group the tensor into a matrix and get the eigenvector
         mdims = A.dim([5,3,1]);
@@ -47,20 +55,38 @@ for itidx=1:2*maxit
         end
         M2 = M.split({[1,2,3;mdims]});
         
-        % Left normalize the tensor and update the tensor list
-        M2 = M2.group({[1,3],2});
-        [TU, TS, TV] = M2.svd();
-        new_m = TU.split({[1,3;mdims([1,3])],2});
+        % Update the tensors
+        next_m = [];
+        if incidx > 0
+            % Left normalize
+            M2 = M2.group({[1,3],2});
+            [TU, TS, TV] = M2.svd();
+            new_m = TU.split({[1,3;mdims([1,3])],2});
+            
+            if ii < n
+                % Update the next tensor
+                next_m = TS.contract(TV.dagger(), [2,1]);
+                next_m = next_m.contract(ms{nextidx},[2,1]);
+            end
+        else
+            % Right normalize
+            M2 = M2.group({1,[2,3]});
+            [TU, TS, TV] = M2.svd();
+            new_m = TV.dagger().split({1,[2,3;mdims([2,3])]});
+            
+            if ii > 1
+                % Update the next tensor
+                next_m = TU.contract(TS, [2,1]);
+                next_m = next_m.contract(ms{nextidx},[1,2]);
+            end
+        end
         
         ms.tensors{ii} = new_m;
         msd.tensors{ii} = new_m.conjugate();
         
-        if ii < n
-            % Update the next tensor
-            new_m = TS.contract(TV.dagger(), [2,1]);
-            new_m = new_m.contract(ms{ii+1},[2,1]);
-            ms.tensors{nextidx} = new_m;
-            msd.tensors{nextidx} = new_m.conjugate();
+        if ~isequal(next_m,[])
+            ms.tensors{nextidx} = next_m;
+            msd.tensors{nextidx} = next_m.conjugate();
         end
         
         if idxinc > 0
@@ -78,10 +104,12 @@ for itidx=1:2*maxit
             end
         else
             if ii == n-1
+                % Initialize the R list
                 T = mpo.tensors{n}.contract(ms.tensors{n}, [3,3]);
                 T = T.contract(msd.tensors{n}, [3,3]);
                 R{ii} = T.split({2,5,1,4,3,6});
             elseif ii < n
+                % Update the R list
                 T = R{ii+1}.contract(ms.tensors{ii+1}, [1,2]);
                 T = T.contract(mpo.tensors{ii+1}, [1,2;7,3]);
                 T = T.contract(msd.tensors{ii+1}, [1,2;7,3]);
