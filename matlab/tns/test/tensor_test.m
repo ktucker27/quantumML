@@ -43,6 +43,12 @@ if trace_test() ~= 1
     pass = 0;
 end
 
+disp('  dummy_test');
+if dummy_test() ~= 1
+    disp('FAIL: tensor_test.dummy_test');
+    pass = 0;
+end
+
 end
 
 function pass = scalar_contraction()
@@ -275,6 +281,92 @@ end
 
 end
 
+function pass = dummy_test()
+
+pass = 1;
+
+tol = 1e-12;
+
+% Test rank and dims
+A = rand(2,3);
+T = Tensor(A,3);
+
+if ~check_rank_and_dim(T, 3, [2,3,1])
+    disp('FAIL: Initial dummy index check');
+    pass = 0;
+end
+
+% Test group
+T2 = T.group({[1,3],2});
+if ~check_rank_and_dim(T2, 2, [2,3])
+    disp('FAIL: Dummy group rank and dim test');
+    pass = 0;
+end
+
+if T.equals(T2)
+    disp('FAIL: Grouped tensor should not be equal to original');
+    pass = 0;
+end
+
+if ~compare_tensor_matrix(T2, T.matrix(), tol)
+    disp('FAIL: Grouped tensor should have the same matrix as the original');
+    pass = 0;
+end
+
+% Test split
+% Move dummy index in
+T2 = T.split({1,3,2});
+if ~check_rank_and_dim(T2, 3, [2,1,3])
+    disp('FAIL: Split move dummy index in test');
+    pass = 0;
+end
+
+% Move dummy index out
+A = rand(3,1,2);
+T = Tensor(A);
+T2 = T.split({1,3,2});
+if ~check_rank_and_dim(T2, 3, [3,2,1])
+    disp('FAIL: Split move dummy index out test');
+    pass = 0;
+end
+
+% Split to dummy
+A = rand(4,4);
+T = Tensor(A);
+T2 = T.split({1,[2,3,4;2,2,1]});
+if ~check_rank_and_dim(T2, 4, [4,2,2,1])
+    disp('FAIL: Split to dummy test');
+    pass = 0;
+end
+
+% Test contraction
+A = rand(3,1,2);
+B = rand(2,2);
+TA = Tensor(A);
+TB = Tensor(B);
+T = TB.contract(TA, [1,3]);
+if ~check_rank_and_dim(T, 3, [2,3,1])
+    disp('FAIL: Dummy contraction test');
+    pass = 0;
+end
+
+% Test trace
+A = rand(2,1,2);
+T = Tensor(A);
+T2 = T.trace([1,3]);
+if ~check_rank_and_dim(T2, 1, 1)
+    disp('FAIL: Dummy trace test');
+    pass = 0;
+end
+
+B = reshape(A,2,2,[]);
+if abs(trace(B) - T2.get(1)) > tol
+    disp('FAIL: Dummy trace value is incorrect');
+    pass = 0;
+end
+
+end
+
 function pass = compare_tensor_matrix(T, A, tol)
 
 pass = 1;
@@ -303,4 +395,20 @@ if pass ~= T.equals(T2, tol)
     disp('FAIL - Tensor equality does not match matrix comparison');
     pass = 0;
 end
+end
+
+function pass = check_rank_and_dim(T, rank, dim)
+
+pass = 1;
+
+if(T.rank() ~= rank)
+    disp(['FAIL: Expected tensor with rank ', num2str(rank), ', got ', num2str(T.rank())]);
+    pass = 0;
+end
+
+if(~isequal(T.dims(), dim))
+    disp(['FAIL: Expected tensor with dimensions [', num2str(dim), '], got [', num2str(T.dims()), ']']);
+    pass = 0;
+end
+
 end

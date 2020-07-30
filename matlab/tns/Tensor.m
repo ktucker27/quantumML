@@ -1,11 +1,17 @@
 classdef Tensor < handle
     properties
         A
+        tensor_rank
     end
     methods
-        function obj = Tensor(T)
-            if nargin == 1
+        function obj = Tensor(T, rank)
+            if nargin >= 1
                 obj.A = T;
+                if nargin == 2
+                    obj.tensor_rank = rank;
+                else
+                    obj.tensor_rank = obj.rank_from_matrix();
+                end
             end
         end
         function set(obj, idx, val)
@@ -17,7 +23,7 @@ classdef Tensor < handle
                 idx = cat(2, idx, 1);
             end
             
-            if min(idx <= size(obj.A)) == 0
+            if min(idx(1:ndims(obj.A)) <= size(obj.A)) == 0
                 error('Tensor.set received index out of range');
             end
             
@@ -33,7 +39,7 @@ classdef Tensor < handle
                 idx = cat(2, idx, 1);
             end
             
-            if min(idx <= size(obj.A)) == 0
+            if min(idx(1:ndims(obj.A)) <= size(obj.A)) == 0
                 error('Tensor.set received index out of range');
             end
             
@@ -41,12 +47,19 @@ classdef Tensor < handle
             val = obj.A(idx{:});
         end
         function T = group(obj, idxlist)
+            % GROUP: Create a new tensor grouping this tensor's indices
+            % according to idxlist
+            %
+            % idxlist{i} = Row vector of this tensor's indices to place in
+            % the ith dimension of the new tensor in first-in-first-toggled
+            % order
+            
             if size(idxlist,1) ~= 1
                 error('Expected idxlist to be a row vector of cells');
             end
             
             % Determine the dimesnions of the new tensor
-            dims = size(obj.A);
+            dims = obj.dims();
             
             tdims = ones(size(idxlist));
             for ii=1:size(tdims,2)
@@ -56,12 +69,13 @@ classdef Tensor < handle
                 end
             end
             
+            new_rank = numel(tdims);
             if isscalar(tdims)
                 tdims = [tdims,1];
             end
             
             % Create and populate the values of the new tensor
-            T = Tensor(zeros(tdims));
+            T = Tensor(zeros(tdims), new_rank);
             
             iter = IndexIter(tdims);
             while ~iter.end()
@@ -90,8 +104,12 @@ classdef Tensor < handle
                 error('Expected idxlist to be a row vector of cells');
             end
             
+            if size(idxlist,2) ~= obj.rank()
+                error('Expected idxlist size to be the same as the tensor rank');
+            end
+            
             % Determine the dimesnions of the new tensor
-            dims = size(obj.A);
+            dims = obj.dims();
             
             tdims = [];
             for ii=1:size(idxlist,2)
@@ -113,12 +131,13 @@ classdef Tensor < handle
                 end
             end
             
+            new_rank = numel(tdims);
             if isscalar(tdims)
                 tdims = [tdims,1];
             end
             
             % Create and populate the values of the new tensor
-            T = Tensor(zeros(tdims));
+            T = Tensor(zeros(tdims), new_rank);
             
             iter = IndexIter(dims);
             while ~iter.end()
@@ -150,18 +169,21 @@ classdef Tensor < handle
             TV = Tensor(v);
         end
         function T = conjugate(obj)
-            T = Tensor(conj(obj.A));
+            T = Tensor(conj(obj.A), obj.tensor_rank);
+        end
+        function T = squeeze(obj)
+            T = Tensor(squeeze(obj.A));
         end
         function C = contract(obj, T, indices)
-            r1 = ndims(obj.A);
-            r2 = ndims(T.A);
+            r1 = obj.rank();
+            r2 = T.rank();
             
             if min(r1 >= indices(:,1)) == 0 || min(r2 >= indices(:,2)) == 0
                 error('Index exceeds tensor rank');
             end
             
-            s1 = size(obj.A);
-            s2 = size(T.A);
+            s1 = obj.dims();
+            s2 = T.dims();
             if norm(s1(indices(:,1)') - s2(indices(:,2)')) > 0
                 error('Contracted index dimension mismatch');
             end
@@ -170,10 +192,11 @@ classdef Tensor < handle
             s1(indices(:,1)) = [];
             s2(indices(:,2)) = [];
             csize = cat(2,s1,s2);
+            new_rank = numel(csize);
             if min(size(csize)) == 0
                 csize = 1;
             end
-            C = Tensor(zeros(csize));
+            C = Tensor(zeros(csize), new_rank);
             
             iter = IndexIter(csize);
             
@@ -183,7 +206,7 @@ classdef Tensor < handle
                     iteridx = 1;
                     citeridx = 1;
                     idx1 = [];
-                    for ii=1:ndims(obj.A)
+                    for ii=1:obj.rank()
                         if min(size(find(indices(:,1) == ii))) == 0
                             idx1 = cat(2, idx1, iter.curridx(iteridx));
                             iteridx = iteridx + 1;
@@ -196,7 +219,7 @@ classdef Tensor < handle
                     
                     citeridx = 1;
                     idx2 = [];
-                    for ii=1:ndims(T.A)
+                    for ii=1:T.rank()
                         if min(size(find(indices(:,2) == ii))) == 0
                             idx2 = cat(2, idx2, iter.curridx(iteridx));
                             iteridx = iteridx + 1;
@@ -217,13 +240,13 @@ classdef Tensor < handle
             end
         end
         function C = trace(obj, indices)
-            r = ndims(obj.A);
+            r = obj.rank();
             
             if min(r >= indices(:,1)) == 0 || min(r >= indices(:,2)) == 0
                 error('Index exceeds tensor rank');
             end
             
-            s = size(obj.A);
+            s = obj.dims();
             if norm(s(indices(:,1)') - s(indices(:,2)')) > 0
                 error('Contracted index dimension mismatch');
             end
@@ -231,10 +254,11 @@ classdef Tensor < handle
             
             s(reshape(indices, 1, [])) = [];
             csize = s;
+            new_rank = numel(csize);
             if min(size(csize)) == 0
                 csize = 1;
             end
-            C = Tensor(zeros(csize));
+            C = Tensor(zeros(csize), new_rank);
             
             iter = IndexIter(csize);
             
@@ -243,7 +267,7 @@ classdef Tensor < handle
                 while ~citer.end()
                     iteridx = 1;
                     idx1 = [];
-                    for ii=1:ndims(obj.A)
+                    for ii=1:obj.rank()
                         leftidx = find(indices(:,1) == ii);
                         rightidx = find(indices(:,2) == ii);
                         if isscalar(leftidx)
@@ -267,6 +291,9 @@ classdef Tensor < handle
             end
         end
         function d = rank(obj)
+            d = obj.tensor_rank;
+        end
+        function d = rank_from_matrix(obj)
             s = size(obj.A);
             if min(s(:)) == 0
                 d = -1;
@@ -284,14 +311,20 @@ classdef Tensor < handle
             end
         end
         function d = dims(obj)
-            if isscalar(obj.A)
+            if obj.tensor_rank == 0
                 d = 0;
                 return
             end
             
-            d = size(obj.A);
-            if numel(d) == 2 && d(2) == 1
-                d(2) = [];
+            d = ones(1,obj.tensor_rank);
+            for ii=1:ndims(obj.A)
+                if ii <= size(d,2)
+                    d(ii) = size(obj.A,ii);
+                else
+                    if size(obj.A,ii) ~= 1
+                        error('Tensor matrix dimension exceeds tensor rank');
+                    end
+                end
             end
         end
         function d = dim(obj, idx)
