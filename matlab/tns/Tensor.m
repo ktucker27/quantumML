@@ -164,9 +164,9 @@ classdef Tensor < handle
             
             [u,s,v] = svd(obj.A, 'econ');
             
-            TU = Tensor(u);
-            TS = Tensor(s);
-            TV = Tensor(v);
+            TU = Tensor(u, 2);
+            TS = Tensor(s, 2);
+            TV = Tensor(v, 2);
         end
         function T = conjugate(obj)
             T = Tensor(conj(obj.A), obj.tensor_rank);

@@ -30,6 +30,11 @@ for itidx=1:2*maxit
     % Sweep to the right/left updating tensors
     for ii=startidx:idxinc:endidx
         nextidx = ii + idxinc;
+        if nextidx > n
+            nextidx = n-1;
+        elseif nextidx < 1
+            nextidx = 2;
+        end
         
         % Contract the MPO state with R
         TR = R{ii};
@@ -57,7 +62,7 @@ for itidx=1:2*maxit
         
         % Update the tensors
         next_m = [];
-        if incidx > 0
+        if (idxinc > 0 && ii < n) || (idxinc < 0 && ii == 1)
             % Left normalize
             M2 = M2.group({[1,3],2});
             [TU, TS, TV] = M2.svd();
@@ -66,7 +71,7 @@ for itidx=1:2*maxit
             if ii < n
                 % Update the next tensor
                 next_m = TS.contract(TV.conjugate(), [2,2]);
-                next_m = next_m.contract(ms{nextidx},[2,1]);
+                next_m = next_m.contract(ms.tensors{nextidx},[2,1]);
             end
         else
             % Right normalize
@@ -77,7 +82,7 @@ for itidx=1:2*maxit
             if ii > 1
                 % Update the next tensor
                 next_m = TU.contract(TS, [2,1]);
-                next_m = next_m.contract(ms{nextidx},[1,2]);
+                next_m = next_m.contract(ms.tensors{nextidx},[1,2]);
             end
         end
         
@@ -90,30 +95,30 @@ for itidx=1:2*maxit
         end
         
         if idxinc > 0
-            if ii == 2
+            if ii == 1
                 % Initialize the L list
                 T = mpo.tensors{1}.contract(ms.tensors{1}, [3,3]);
                 T = T.contract(msd.tensors{1}, [3,3]);
-                L{ii} = T.split({5,2,4,1,6,3});
-            elseif ii > 1
+                L{ii+1} = T.split({5,2,4,1,6,3});
+            elseif ii < n
                 % Update the L list
-                T = L{ii-1}.contract(ms.tensors{ii-1}, [1,1]);
-                T = T.contract(mpo.tensors{ii-1}, [1,1;7,3]);
-                T = T.contract(msd.tensors{ii-1}, [1,1;7,3]);
-                L{ii} = T.split({4,5,6,1,2,3});
+                T = L{ii}.contract(ms.tensors{ii}, [1,1]);
+                T = T.contract(mpo.tensors{ii}, [1,1;7,3]);
+                T = T.contract(msd.tensors{ii}, [1,1;7,3]);
+                L{ii+1} = T.split({4,5,6,1,2,3});
             end
         else
-            if ii == n-1
+            if ii == n
                 % Initialize the R list
                 T = mpo.tensors{n}.contract(ms.tensors{n}, [3,3]);
                 T = T.contract(msd.tensors{n}, [3,3]);
-                R{ii} = T.split({2,5,1,4,3,6});
-            elseif ii < n
+                R{ii-1} = T.split({2,5,1,4,3,6});
+            elseif ii > 1
                 % Update the R list
-                T = R{ii+1}.contract(ms.tensors{ii+1}, [1,2]);
-                T = T.contract(mpo.tensors{ii+1}, [1,2;7,3]);
-                T = T.contract(msd.tensors{ii+1}, [1,2;7,3]);
-                R{ii} = T.split({4,5,6,1,2,3});
+                T = R{ii}.contract(ms.tensors{ii}, [1,2]);
+                T = T.contract(mpo.tensors{ii}, [1,2;7,3]);
+                T = T.contract(msd.tensors{ii}, [1,2;7,3]);
+                R{ii-1} = T.split({4,5,6,1,2,3});
             end
         end
     end
