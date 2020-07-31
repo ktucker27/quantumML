@@ -1,5 +1,7 @@
 function mps_out = dmrg(mpo, mps, tol, maxit)
 
+EPS = 1e-12;
+
 n = mps.num_sites();
 
 ms = mps.substate(1:n);
@@ -82,16 +84,17 @@ for itidx=1:2*maxit
             if ii > 1
                 % Update the next tensor
                 next_m = TU.contract(TS, [2,1]);
-                next_m = next_m.contract(ms.tensors{nextidx},[1,2]);
+                next_m = ms.tensors{nextidx}.contract(next_m,[2,1]);
+                next_m = next_m.split({1,3,2});
             end
         end
         
-        ms.tensors{ii} = new_m;
-        msd.tensors{ii} = new_m.conjugate();
+        ms.set_tensor(ii, new_m);
+        msd.set_tensor(ii, new_m.conjugate());
         
         if ~isequal(next_m,[])
-            ms.tensors{nextidx} = next_m;
-            msd.tensors{nextidx} = next_m.conjugate();
+            ms.set_tensor(nextidx, next_m);
+            msd.set_tensor(nextidx, next_m.conjugate());
         end
         
         if idxinc > 0
@@ -128,12 +131,12 @@ for itidx=1:2*maxit
     mpo_mpo_ms = apply_mpo(mpo, mpo_ms);
     var = ms.inner(mpo_mpo_ms) - (ms.inner(mpo_ms))^2;
     
-    if var < 0
+    if var < -EPS
         error('Found negative energy variance');
     end
     
     if var < tol
-        disp(['Converged with energy variance ', num2str(var)]);
+        disp(['Converged in ', num2str(itidx/2), ' iterations with energy variance ', num2str(var)]);
         break;
     end
 

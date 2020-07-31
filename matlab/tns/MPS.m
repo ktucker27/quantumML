@@ -32,9 +32,36 @@ classdef MPS < handle
                 end
                 
                 if tensors{iim1}.dim(2) ~= T.dim(1)
-                    error(['Bond dimension mismatch between sites ', num2str(ii-1), ' and ', num2str(ii)]);
+                    error(['Bond dimension mismatch between sites ', num2str(iim1), ' and ', num2str(ii)]);
                 end
             end
+        end
+        function set_tensor(obj, ii, T)
+            if T.rank() ~= 3
+                error(['Expected rank 3 tensor at site ', num2str(ii)]);
+            end
+            
+            n = obj.num_sites();
+            
+            iim1 = ii-1;
+            if ii == 1
+                iim1 = n;
+            end
+            
+            if obj.tensors{iim1}.dim(2) ~= T.dim(1)
+                error(['Bond dimension mismatch between sites ', num2str(iim1), ' and ', num2str(ii)]);
+            end
+            
+            iip1 = ii+1;
+            if ii == n
+                iip1 = 1;
+            end
+            
+            if obj.tensors{iip1}.dim(1) ~= T.dim(2)
+                error(['Bond dimension mismatch between sites ', num2str(ii), ' and ', num2str(iip1)]);
+            end
+            
+            obj.tensors{ii} = T;
         end
         function mps = substate(obj, indices)
             ms = {};

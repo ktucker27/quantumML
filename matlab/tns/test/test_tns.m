@@ -33,6 +33,14 @@ end
 
 disp(' ')
 
+disp('dmrg_test:');
+if dmrg_test() ~= 1
+    disp('FAIL: dmrg_test');
+    pass = 0;
+end
+
+disp(' ')
+
 if pass == 1
     disp('test_tns PASSED');
 else
