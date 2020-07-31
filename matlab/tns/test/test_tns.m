@@ -25,6 +25,14 @@ end
 
 disp(' ')
 
+disp('mpo_test:');
+if mpo_test() ~= 1
+    disp('FAIL: mpo_test');
+    pass = 0;
+end
+
+disp(' ')
+
 if pass == 1
     disp('test_tns PASSED');
 else
