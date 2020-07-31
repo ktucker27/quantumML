@@ -45,12 +45,12 @@ psi_out = mps_out.state_vector();
 
 phaser = psi_out(1,1)/psi0(1,1);
 if abs(abs(phaser) - 1) > tol
-    disp('FAIL: Converged state vector not equal to ground state');
+    disp(['FAIL: Converged state vector not equal to ground state, error: ', num2str(abs(abs(phaser) - 1))]);
     pass = 0;
 end
 
 if max(abs(psi0 - psi_out/phaser)) > tol
-    disp('FAIL: Phased converged state vector not equal to ground state');
+    disp(['FAIL: Phased converged state vector not equal to ground state, error: ', num2str(max(abs(psi0 - psi_out/phaser)))]);
     pass = 0;
 end
 
