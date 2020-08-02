@@ -292,43 +292,38 @@ classdef Tensor < handle
             f1 = 1:size(s1,2);
             f1(indices(:,1)') = [];
             
-            M1 = permute(obj.A, cat(2, indices(:,1)', f1));
             if numel(f1) ~= 0
-                new_shape = cat(2, {[]}, num2cell(s1(f1)));
-                M1 = reshape(M1, new_shape{:});
+                M1 = permute(obj.A, cat(2, f1, indices(:,1)'));
+                M1 = reshape(M1, prod(s1(f1)), []);
             else
-                M1 = reshape(M1, [], 1);
+                M1 = reshape(obj.A, 1, []);
             end
             
             f2 = 1:size(s2,2);
             f2(indices(:,2)') = [];
             
-            M2 = permute(T.A, cat(2, indices(:,2)', f2));
             if numel(f2) ~= 0
-                new_shape = cat(2, {[]}, num2cell(s2(f2)));
-                M2 = reshape(M2, new_shape{:});
+                M2 = permute(T.A, cat(2, indices(:,2)', f2));
+                M2 = reshape(M2, [], prod(s2(f2)));
             else
-                M2 = reshape(M2, [], 1);
+                M2 = reshape(T.A, [], 1);
             end
+            
+            M3 = M1*M2;
             
             s1(indices(:,1)) = [];
             s2(indices(:,2)) = [];
             csize = cat(2,s1,s2);
             new_rank = numel(csize);
             if min(size(csize)) == 0
-                csize = 1;
+                csize = [1,1];
             end
-            C = Tensor(zeros(csize), new_rank);
             
-            iter = IndexIter(csize);
-            
-            while ~iter.end()
-                idx1 = num2cell(iter.curridx(1:size(f1,2)));
-                idx2 = num2cell(iter.curridx(size(f1,2)+1:end));
-                idx3 = num2cell(iter.curridx);
-                C.A(idx3{:}) = M1(:,idx1{:}).'*M2(:,idx2{:});
-                iter.next();
+            if numel(csize) == 1
+                csize = [csize,1];
             end
+            
+            C = Tensor(reshape(M3, csize), new_rank);
         end
         function C = contract_orig(obj, T, indices)
             r1 = obj.rank();
