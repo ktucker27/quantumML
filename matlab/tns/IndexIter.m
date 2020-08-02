@@ -9,7 +9,7 @@ classdef IndexIter < handle
             obj.curridx = ones(size(obj.dim));
         end
         function val = end(obj)
-            val = (norm(obj.curridx - obj.endidx()) == 0);
+            val = isequal(obj.curridx, obj.endidx());
         end
         function idx = endidx(obj)
             idx = zeros(size(obj.dim));
