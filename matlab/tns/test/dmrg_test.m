@@ -17,7 +17,7 @@ pass = 1;
 tol = 1e-12;
 maxit = 1000;
 
-n = 3;
+n = 6;
 pdim = 2;
 J = 1;
 h = 1;
