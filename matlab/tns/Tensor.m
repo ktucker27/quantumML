@@ -58,6 +58,39 @@ classdef Tensor < handle
                 error('Expected idxlist to be a row vector of cells');
             end
             
+            % Determine the dimensions of the new tensor
+            dims = obj.dims();
+            
+            tdims = ones(size(idxlist));
+            new_order = [];
+            for ii=1:size(tdims,2)
+                tdims(ii) = prod(dims(idxlist{ii}));
+                new_order = cat(2, new_order, idxlist{ii});
+            end
+            
+            new_rank = numel(tdims);
+            if isscalar(tdims)
+                tdims = [tdims,1];
+            end
+            
+            G = permute(obj.A, new_order);
+            G = reshape(G, tdims);
+            
+            % Create and populate the values of the new tensor
+            T = Tensor(G, new_rank);
+        end
+        function T = group_orig(obj, idxlist)
+            % GROUP: Create a new tensor grouping this tensor's indices
+            % according to idxlist
+            %
+            % idxlist{i} = Row vector of this tensor's indices to place in
+            % the ith dimension of the new tensor in first-in-first-toggled
+            % order
+            
+            if size(idxlist,1) ~= 1
+                error('Expected idxlist to be a row vector of cells');
+            end
+            
             % Determine the dimesnions of the new tensor
             dims = obj.dims();
             
