@@ -55,7 +55,8 @@ for itidx=1:2*maxit
         % Group the tensor into a matrix and get the eigenvector
         mdims = A.dim([5,3,1]);
         A = A.group({[6,4,2],[5,3,1]});
-        [evec, ~] = eigs(A.matrix(),1);
+        [evec, ~] = eig(A.matrix());
+        evec = evec(:,1); % TODO - Find a more efficient way of getting this
         M = Tensor(evec);
         if M.rank() ~= 1
             error(['Expected rank one tensor from eigenvector, got ', num2str(M.rank())]);
