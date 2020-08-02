@@ -315,8 +315,8 @@ end
 
 % Test split
 % Move dummy index in
-T2 = T.split({1,3,2});
-if ~check_rank_and_dim(T2, 3, [2,1,3])
+T2 = T.split({3,1,2});
+if ~check_rank_and_dim(T2, 3, [3,1,2])
     disp('FAIL: Split move dummy index in test');
     pass = 0;
 end
@@ -324,8 +324,8 @@ end
 % Move dummy index out
 A = rand(3,1,2);
 T = Tensor(A);
-T2 = T.split({1,3,2});
-if ~check_rank_and_dim(T2, 3, [3,2,1])
+T2 = T.split({2,3,1});
+if ~check_rank_and_dim(T2, 3, [2,3,1])
     disp('FAIL: Split move dummy index out test');
     pass = 0;
 end

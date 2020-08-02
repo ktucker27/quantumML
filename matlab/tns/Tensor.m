@@ -145,6 +145,74 @@ classdef Tensor < handle
             dims = obj.dims();
             
             tdims = [];
+            new_shape = [];
+            for ii=1:size(idxlist,2)
+                split_indices = idxlist{ii};
+                split_size = size(split_indices);
+                
+                if ~isequal(split_size, [1,1]) && split_size(1) ~= 2
+                    error('Split idxlist value must be a scalar or matrix with two rows');
+                end
+                
+                if ~isscalar(split_indices) && prod(split_indices(2,:)) ~= dims(ii)
+                    error('Product of split dimensions does not equal original dimension');
+                end
+                
+                if isscalar(split_indices)
+                    tdims(split_indices) = dims(ii); %#ok<AGROW>
+                    new_shape = cat(2, new_shape, dims(ii));
+                else
+                    tdims(split_indices(1,:)) = split_indices(2,:); %#ok<AGROW>
+                    new_shape = cat(2, new_shape, split_indices(2,:));
+                end
+            end
+            
+            new_rank = numel(tdims);
+            
+            new_order = zeros(1,new_rank);
+            num_set = 0;
+            for ii=1:size(idxlist,2)
+                split_indices = idxlist{ii};
+                new_order(split_indices(1,:)) = num_set+1:num_set+size(split_indices,2);
+                num_set = num_set + size(split_indices,2);
+            end
+            
+            if num_set ~= new_rank || min(new_order) == 0
+                error('Incorrect number of indices set for permutation');
+            end
+            
+            G = reshape(obj.A, new_shape);
+            G = permute(G, new_order);
+            
+            % Create and populate the values of the new tensor
+            T = Tensor(G, new_rank);
+            
+            if ~isequal(T.dims(), tdims)
+                error('New tensor does not have expected dimension');
+            end
+        end
+        function T = split_orig(obj, idxlist)
+            % SPLIT: Create a new tensor splitting this tensor's indices
+            % according to idxlist
+            %
+            % idxlist{i} = Destination for the ith index in the new tensor.
+            % If a scalar is provided, it will indicate the destination
+            % index. Otherwise, a matrix with two rows is expected. The
+            % first row is the destination indices for the split, while the
+            % second is the dimensions
+            
+            if size(idxlist,1) ~= 1
+                error('Expected idxlist to be a row vector of cells');
+            end
+            
+            if size(idxlist,2) ~= obj.rank()
+                error('Expected idxlist size to be the same as the tensor rank');
+            end
+            
+            % Determine the dimesnions of the new tensor
+            dims = obj.dims();
+            
+            tdims = [];
             for ii=1:size(idxlist,2)
                 split_indices = idxlist{ii};
                 split_size = size(split_indices);
