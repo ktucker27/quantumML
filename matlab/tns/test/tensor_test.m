@@ -270,12 +270,31 @@ pass = 1;
 
 tol = 1e-12;
 
+% Standard matrix total trace
 A = rand(3,3);
 T = Tensor(A);
 T2 = T.trace([1,2]);
 
 if ~compare_tensor_matrix(T2, trace(A), tol)
     disp('FAIL: Trace comparison failed');
+    pass = 0;
+end
+
+% Larger tensor partial trace
+A = rand(3,4,3,4,2);
+T = Tensor(A);
+T2 = T.trace([1, 3;2,4]);
+B = zeros(2,1);
+for ii=1:3
+    for jj=1:4
+        for kk=1:2
+            B(kk) = B(kk) + A(ii,jj,ii,jj,kk);
+        end
+    end
+end
+
+if ~compare_tensor_matrix(T2, B, tol)
+    disp('FAIL: Partial trace comparison failed');
     pass = 0;
 end
 

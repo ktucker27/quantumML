@@ -409,6 +409,11 @@ classdef Tensor < handle
             if min(size(csize)) == 0
                 csize = 1;
             end
+            
+            if numel(csize) == 1
+                csize = [csize, 1];
+            end
+            
             C = Tensor(zeros(csize), new_rank);
             
             iter = IndexIter(csize);
