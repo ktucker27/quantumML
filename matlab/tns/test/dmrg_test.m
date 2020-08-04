@@ -36,7 +36,7 @@ end
 
 [evecs, ~] = eig(H);
 psi0 = evecs(:,1);
-psi = rand(pdim^n,1);
+psi = rand(pdim^n,1) + 1i*rand(pdim^n,1);
 psi = psi/norm(psi);
 
 mps = state_to_mps(psi, n, pdim);
