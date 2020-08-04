@@ -128,19 +128,21 @@ for itidx=1:2*maxit
     end
     
     % Compute energy variance to see if we've converged
-    mpo_ms = apply_mpo(mpo, ms);
-    mpo_mpo_ms = apply_mpo(mpo, mpo_ms);
-    var = ms.inner(mpo_mpo_ms) - (ms.inner(mpo_ms))^2;
-    
-    if var < -EPS
-        error('Found negative energy variance');
+    if idxinc < 0
+        mpo_ms = apply_mpo(mpo, ms);
+        mpo_mpo_ms = apply_mpo(mpo, mpo_ms);
+        var = ms.inner(mpo_mpo_ms) - (ms.inner(mpo_ms))^2;
+        
+        if var < -EPS
+            error('Found negative energy variance');
+        end
+        
+        if var < tol
+            disp(['Converged in ', num2str(itidx/2), ' iterations with energy variance ', num2str(var)]);
+            break;
+        end
     end
     
-    if var < tol
-        disp(['Converged in ', num2str(itidx/2), ' iterations with energy variance ', num2str(var)]);
-        break;
-    end
-
     % Flip the sweep direction
     if idxinc > 0
         startidx = n;
