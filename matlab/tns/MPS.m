@@ -138,6 +138,22 @@ classdef MPS < handle
                 d(ii) = obj.tensors{ii}.dim(3);
             end
         end
+        function e = equals(obj, T, tol)
+            n = obj.num_sites();
+            e = (n == T.num_sites());
+            if ~e 
+                return
+            end
+            
+            for ii=1:n
+                e = obj.tensors{ii}.equals(T.tensors{ii}, tol);
+                if ~e
+                    return
+                end
+            end
+            
+            e = true;
+        end
     end
     methods(Static)
         function obj = mps_zeros(n,bdim,pdim,obc)

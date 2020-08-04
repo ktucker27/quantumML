@@ -19,6 +19,12 @@ if inner_test(4, 2) ~= 1
     pass = 0;
 end
 
+disp('  equals_test');
+if equals_test() ~= 1
+    disp('FAIL: mps_test.equals_test');
+    pass = 0;
+end
+
 end
 
 function pass = eval_test(n, pdim)
@@ -92,4 +98,41 @@ if n >= 4
     end
 end
 
+end
+
+function pass = equals_test()
+
+pass = 1;
+
+tol = 1e-12;
+
+n = 4;
+pdim = 3;
+
+psi = rand(pdim^n,1);
+psi = psi/norm(psi);
+mps = state_to_mps(psi, n, pdim);
+mps2 = mps.substate(1:n);
+
+if ~mps.equals(mps2, tol)
+    disp('FAIL - Equality test with identical MPS failed');
+    pass = 0;
+end
+
+mps2.tensors{2}.set([1,2,1], mps2.tensors{2}.get([1,2,1]) + 0.5*tol);
+if ~mps.equals(mps2, tol)
+    disp('FAIL - Equality test with MPS within tolerance failed');
+    pass = 0;
+end
+
+if mps.equals(mps2, 0.25*tol)
+    disp('FAIL - Equality test with tensors outside tolerance failed');
+    pass = 0;
+end
+
+mps2 = mps.substate(2:n-1);
+if mps.equals(mps2, tol)
+    disp('FAIL - Equality test with MPS of different sizes failed');
+    pass = 0;
+end
 end
