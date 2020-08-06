@@ -4,6 +4,11 @@ EPS = 1e-12;
 
 n = mps.num_sites();
 
+% Right normalize the state if it's not already
+if ~mps.is_right_normal(EPS)
+    mps.right_normalize();
+end
+
 ms = mps.substate(1:n);
 msd = mps.dagger();
 
