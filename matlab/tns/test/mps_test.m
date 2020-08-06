@@ -25,6 +25,12 @@ if equals_test() ~= 1
     pass = 0;
 end
 
+disp('  normal_test');
+if normal_test() ~= 1
+    disp('FAIL: mps_test.normal_test');
+    pass = 0;
+end
+
 end
 
 function pass = eval_test(n, pdim)
@@ -135,4 +141,66 @@ if mps.equals(mps2, tol)
     disp('FAIL - Equality test with MPS of different sizes failed');
     pass = 0;
 end
+end
+
+function pass = normal_test()
+
+pass = 1;
+
+n = 6;
+pdim = 2;
+tol = 1e-12;
+
+psi = rand(pdim^n,1);
+psi = psi/norm(psi);
+mps = state_to_mps(psi, n, pdim);
+
+% Initial MPS should be in left normal form
+if ~mps.is_left_normal(tol)
+    disp('FAIL: Expected left normal MPS after initialization from vector');
+    pass = 0;
+end
+
+if mps.is_right_normal(tol)
+    disp('FAIL: Found unexpected right normal MPS');
+    pass = 0;
+end
+
+% Right normalize and check
+mps.right_normalize();
+if ~mps.is_right_normal(tol)
+    disp('FAIL: Expected right normal MPS after normalization');
+    pass = 0;
+end
+
+if mps.is_left_normal(tol)
+    disp('FAIL: Found unexpected left normal MPS');
+    pass = 0;
+end
+
+psi2 = mps.state_vector();
+if max(abs(psi - psi2)) > tol
+    disp('FAIL: Right normalized MPS did not preserve state vector');
+    pass = 0;
+end
+
+% Return to left normal
+mps.left_normalize();
+
+if ~mps.is_left_normal(tol)
+    disp('FAIL: Expected left normal MPS after renormalization');
+    pass = 0;
+end
+
+if mps.is_right_normal(tol)
+    disp('FAIL: Found unexpected right normal MPS after renormalization');
+    pass = 0;
+end
+
+psi2 = mps.state_vector();
+if max(abs(psi - psi2)) > tol
+    disp('FAIL: Left normalized MPS did not preserve state vector');
+    pass = 0;
+end
+
 end

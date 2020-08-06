@@ -154,6 +154,61 @@ classdef MPS < handle
             
             e = true;
         end
+        function e = is_left_normal(obj, tol)
+            e = true;
+            for ii=1:obj.num_sites()
+                A = zeros(obj.tensors{ii}.dim(2), obj.tensors{ii}.dim(2));
+                for jj=1:obj.tensors{ii}.dim(3)
+                    A = A + obj.tensors{ii}.A(:,:,jj)'*obj.tensors{ii}.A(:,:,jj);
+                end
+                
+                D = A - eye(obj.tensors{ii}.dim(2));
+                if max(abs(D(:))) > tol
+                    e = false;
+                    break
+                end
+            end
+        end
+        function e = is_right_normal(obj, tol)
+            e = true;
+            for ii=obj.num_sites():-1:1
+                A = zeros(obj.tensors{ii}.dim(1), obj.tensors{ii}.dim(1));
+                for jj=1:obj.tensors{ii}.dim(3)
+                    A = A + obj.tensors{ii}.A(:,:,jj)*obj.tensors{ii}.A(:,:,jj)';
+                end
+                
+                D = A - eye(obj.tensors{ii}.dim(1));
+                if max(abs(D(:))) > tol
+                    e = false;
+                    break
+                end
+            end
+        end
+        function left_normalize(obj)
+            for ii=1:obj.num_sites()-1
+                mdims = obj.tensors{ii}.dims();
+                M = obj.tensors{ii}.group({[1,3],2});
+                [TU, TS, TV] = M.svd();
+                obj.tensors{ii} = TU.split({[1,3;mdims([1,3])],2});
+                
+                % Update the next tensor
+                next_m = TS.contract(TV.conjugate(), [2,2]);
+                obj.tensors{ii+1} = next_m.contract(obj.tensors{ii+1},[2,1]);
+            end
+        end
+        function right_normalize(obj)
+            for ii=obj.num_sites():-1:2
+                mdims = obj.tensors{ii}.dims();
+                M = obj.tensors{ii}.group({1,[2,3]});
+                [TU, TS, TV] = M.svd();
+                obj.tensors{ii} = TV.conjugate().split({[2,3;mdims([2,3])],1});
+                
+                % Update the next tensor
+                next_m = TU.contract(TS, [2,1]);
+                next_m = obj.tensors{ii-1}.contract(next_m,[2,1]);
+                obj.tensors{ii-1} = next_m.split({1,3,2});
+            end
+        end
     end
     methods(Static)
         function obj = mps_zeros(n,bdim,pdim,obc)
