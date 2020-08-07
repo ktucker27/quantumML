@@ -31,7 +31,7 @@ L{1} = Tensor(1,3);
 
 startidx = 1;
 idxinc = 1;
-endidx = n;
+endidx = n-1;
 
 for itidx=1:2*maxit
     % Sweep to the right/left updating tensors
@@ -60,8 +60,9 @@ for itidx=1:2*maxit
         % Group the tensor into a matrix and get the eigenvector
         mdims = A.dim([5,3,1]);
         A = A.group({[6,4,2],[5,3,1]});
-        [evec, ~] = eig(A.matrix());
-        evec = evec(:,1); % TODO - Find a more efficient way of getting this
+        [evec, evals] = eig(A.matrix());
+        [~, idx] = min(real(diag(evals)));
+        evec = evec(:,idx); % TODO - Find a more efficient way of getting this
         M = Tensor(evec);
         if M.rank() ~= 1
             error(['Expected rank one tensor from eigenvector, got ', num2str(M.rank())]);
@@ -69,39 +70,32 @@ for itidx=1:2*maxit
         M2 = M.split({[1,2,3;mdims]});
         
         % Update the tensors
-        next_m = [];
-        if (idxinc > 0 && ii < n) || (idxinc < 0 && ii == 1)
+        if idxinc > 0
             % Left normalize
             M2 = M2.group({[1,3],2});
             [TU, TS, TV] = M2.svd();
             new_m = TU.split({[1,3;mdims([1,3])],2});
             
-            if ii < n
-                % Update the next tensor
-                next_m = TS.contract(TV.conjugate(), [2,2]);
-                next_m = next_m.contract(ms.tensors{nextidx},[2,1]);
-            end
+            % Update the next tensor
+            next_m = TS.contract(TV.conjugate(), [2,2]);
+            next_m = next_m.contract(ms.tensors{nextidx},[2,1]);
         else
             % Right normalize
             M2 = M2.group({1,[2,3]});
             [TU, TS, TV] = M2.svd();
             new_m = TV.conjugate().split({[2,3;mdims([2,3])],1});
             
-            if ii > 1
-                % Update the next tensor
-                next_m = TU.contract(TS, [2,1]);
-                next_m = ms.tensors{nextidx}.contract(next_m,[2,1]);
-                next_m = next_m.split({1,3,2});
-            end
+            % Update the next tensor
+            next_m = TU.contract(TS, [2,1]);
+            next_m = ms.tensors{nextidx}.contract(next_m,[2,1]);
+            next_m = next_m.split({1,3,2});
         end
         
         ms.set_tensor(ii, new_m);
         msd.set_tensor(ii, new_m.conjugate());
         
-        if ~isequal(next_m,[])
-            ms.set_tensor(nextidx, next_m);
-            msd.set_tensor(nextidx, next_m.conjugate());
-        end
+        ms.set_tensor(nextidx, next_m);
+        msd.set_tensor(nextidx, next_m.conjugate());
         
         if idxinc > 0
             if ii == 1
@@ -109,7 +103,7 @@ for itidx=1:2*maxit
                 T = mpo.tensors{1}.contract(ms.tensors{1}, [3,3]);
                 T = T.contract(msd.tensors{1}, [3,3]);
                 L{ii+1} = T.split({5,2,4,1,6,3});
-            elseif ii < n
+            else
                 % Update the L list
                 T = L{ii}.contract(ms.tensors{ii}, [1,1]);
                 T = T.contract(mpo.tensors{ii}, [1,1;7,3]);
@@ -122,7 +116,7 @@ for itidx=1:2*maxit
                 T = mpo.tensors{n}.contract(ms.tensors{n}, [3,3]);
                 T = T.contract(msd.tensors{n}, [3,3]);
                 R{ii-1} = T.split({2,5,1,4,3,6});
-            elseif ii > 1
+            else
                 % Update the R list
                 T = R{ii}.contract(ms.tensors{ii}, [1,2]);
                 T = T.contract(mpo.tensors{ii}, [1,2;7,3]);
@@ -152,11 +146,11 @@ for itidx=1:2*maxit
     if idxinc > 0
         startidx = n;
         idxinc = -1;
-        endidx = 1;
+        endidx = 2;
     else
         startidx = 1;
         idxinc = 1;
-        endidx = n;
+        endidx = n-1;
     end
         
     if itidx >= 2*maxit

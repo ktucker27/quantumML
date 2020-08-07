@@ -15,7 +15,7 @@ function pass = transverse_ising_test()
 pass = 1;
 
 tol = 1e-12;
-maxit = 1000;
+maxit = 20;
 
 n = 6;
 pdim = 2;
