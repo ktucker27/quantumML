@@ -54,4 +54,9 @@ if max(abs(psi0 - psi_out/phaser)) > tol
     pass = 0;
 end
 
+if abs(mps_out.inner(mps_out) - 1) > tol
+    disp('FAIL: Output eigenvector is not norm 1');
+    pass = 0;
+end
+
 end
