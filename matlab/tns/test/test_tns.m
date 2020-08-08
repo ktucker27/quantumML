@@ -41,6 +41,14 @@ end
 
 disp(' ')
 
+disp('tdvp_test:');
+if tdvp_test() ~= 1
+    disp('FAIL: tdvp_test');
+    pass = 0;
+end
+
+disp(' ')
+
 if pass == 1
     disp('test_tns PASSED');
 else
