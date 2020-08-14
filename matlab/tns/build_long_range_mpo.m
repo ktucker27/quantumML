@@ -2,6 +2,12 @@ function [mpo, M] = build_long_range_mpo(ops, pdim, n, rmult, rpow, N)
 
 % Determine the N term expansion for 1/r^rpow
 [alpha, beta, ~] = pow_2_exp(rpow, 3, N);
+ab0 = [alpha,beta];
+fun = @(alpha_beta)(exp_loss(alpha_beta, rmult, rpow, n, N));
+options = optimset('MaxFunEvals',10000000);
+ab = fminsearch(fun,ab0,options);
+alpha = ab(1:N);
+beta = ab(N+1:end);
 alpha = alpha.*beta; % So that coef. are rmult*(sum_n alpha_n*beta_n^(r-1))
 
 % Build the transfer matrix M based on the automaton
@@ -9,14 +15,14 @@ alpha = alpha.*beta; % So that coef. are rmult*(sum_n alpha_n*beta_n^(r-1))
 % operator that is applied when transitioning from state j to state i
 d = 3*N + 2;
 M = zeros(d, d, pdim, pdim);
-for ii=size(ops,1)
-    M(1,1,:,:) = eye(pdim);
-    M(d,d,:,:) = eye(pdim);
+M(1,1,:,:) = eye(pdim);
+M(d,d,:,:) = eye(pdim);
+for ii=1:size(ops,1)
     for jj=1:N
         stateidx = 1 + (ii-1)*N + jj;
         M(stateidx,1,:,:) = ops{ii,2};
         M(stateidx,stateidx,:,:) = beta(jj)*eye(pdim);
-        M(d,stateidx,:,:) = rmult(ii)*alpha(jj)*ops{ii,1};
+        M(d,stateidx,:,:) = rmult*alpha(jj)*ops{ii,1};
     end
 end
 
