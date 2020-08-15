@@ -14,6 +14,12 @@ if long_range_test() ~= 1
     pass = 0;
 end
 
+disp('  purification_test');
+if purification_test() ~= 1
+    disp('FAIL: mpo_test.purification_test');
+    pass = 0;
+end
+
 end
 
 function pass = matrix_test()
@@ -54,7 +60,7 @@ end
 end
 end
 
-H = full(thermal_ham(n, 0, V));
+H = full(thermal_ham(n, pdim, 0, V));
 
 [~, ~, sz, sx, sy] = local_ops(pdim);
 ops = {-0.5*sx,sx;-0.5*sy,sy;sz,sz};
@@ -63,6 +69,57 @@ H2 = mpo.matrix();
 
 if max(max(abs(H - H2))) > tol
     disp('FAIL: Long range MPO does not match expected matrix');
+    pass = 0;
+end
+
+end
+
+function pass = purification_test()
+
+pass = 1;
+
+tol = 1e-6;
+
+n = 3;
+rpow = 3;
+rmult = 1;
+N = 3;
+pdim = 2;
+[~, ~, sz, sx, sy] = local_ops(pdim);
+
+% Build the Hamiltonian matrix on the physical/auxiliary product space
+V = zeros(n,n);
+for ii=1:n
+    for jj=1:n
+        if ii ~= jj
+            V(ii,jj) = 1/abs(ii-jj)^3;
+        end
+    end
+end
+
+H = full(thermal_ham(n, pdim, 0, V));
+I = eye(pdim^n);
+Hp = kron(H,I);
+
+% Build the MPO
+ops = {-0.5*sx,sx;-0.5*sy,sy;sz,sz};
+mpo = build_purification_mpo(ops,pdim,n,rmult,rpow,N);
+
+% Contract the MPO and group to reproduce the matrix
+for ii=1:2*n
+    if ii == 1
+        T = mpo.tensors{ii};
+    else
+        T = T.contract(mpo.tensors{ii}, [T.rank()-2,1]);
+    end
+end
+T = T.squeeze();
+
+T2 = T.group({[2*2*n:-4:4,2*2*n-2:-4:2],[2*2*n-1:-4:3,2*2*n-3:-4:1]});
+
+% Compare the two matrices
+if max(max(abs(Hp - T2.A))) > tol
+    disp('FAIL: MPO on purification Hilbert space does not match expected matrix');
     pass = 0;
 end
 
