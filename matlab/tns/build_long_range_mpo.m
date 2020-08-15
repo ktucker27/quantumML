@@ -13,7 +13,7 @@ alpha = alpha.*beta; % So that coef. are rmult*(sum_n alpha_n*beta_n^(r-1))
 % Build the transfer matrix M based on the automaton
 % The operators will be read from right to left, and M(i,j,:,:) is the
 % operator that is applied when transitioning from state j to state i
-d = 3*N + 2;
+d = size(ops,1)*N + 2;
 M = zeros(d, d, pdim, pdim);
 M(1,1,:,:) = eye(pdim);
 M(d,d,:,:) = eye(pdim);
