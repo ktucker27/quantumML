@@ -30,11 +30,11 @@ end
 ms = cell(1,n);
 for ii=1:n
     if ii == 1
-        ms{ii} = Tensor(M(end,:,:,:));
+        ms{ii} = Tensor(M(end,:,:,:),4);
     elseif ii == n
-        ms{ii} = Tensor(M(:,1,:,:));
+        ms{ii} = Tensor(M(:,1,:,:),4);
     else
-        ms{ii} = Tensor(M);
+        ms{ii} = Tensor(M,4);
     end
 end
 mpo = MPO(ms);
