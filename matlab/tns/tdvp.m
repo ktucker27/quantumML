@@ -1,4 +1,4 @@
-function [tvec, mps_out] = tdvp(mpo, mps, dt, tfinal, debug)
+function [tvec, mps_out, eout] = tdvp(mpo, mps, dt, tfinal, debug)
 
 if nargin < 5
     debug = false;
@@ -10,11 +10,13 @@ numt = floor(tfinal/dt + 1);
 tvec = zeros(1,numt);
 mps_out = cell(1, numt);
 mps_out{1} = mps;
+eout = zeros(1,numt);
 
 n = mps.num_sites();
 
 % Right normalize the state if it's not already
 if ~mps.is_right_normal(EPS)
+    mps.left_normalize();
     mps.right_normalize();
 end
 
@@ -113,7 +115,7 @@ while abs(t) < abs(tfinal)
             end
             
             if nextidx <= n
-                TL = L{nextidx}.squeeze();
+                TL = L{nextidx}.end_squeeze();
             end
         else
             if ii == n
@@ -130,7 +132,7 @@ while abs(t) < abs(tfinal)
             end
             
             if nextidx >= 1
-                TR = R{nextidx}.squeeze();
+                TR = R{nextidx}.end_squeeze();
             end
         end
         
@@ -181,6 +183,9 @@ while abs(t) < abs(tfinal)
         % Update output variables
         tvec(itidx) = t;
         mps_out{itidx} = MPS(ms.tensors);
+        
+        mpo_ms = apply_mpo(mpo, ms);
+        eout(itidx) = ms.inner(mpo_ms)/ms.inner(ms);
         
         if debug
             if mod(itidx-1,10) == 0

@@ -17,8 +17,15 @@ psi = (1/sqrt(pdim))*psi;
 
 % Convert to a MPS
 site_mps = state_to_mps(psi, 2, pdim);
-T1 = site_mps.tensors{1};
-T2 = site_mps.tensors{2};
+A = site_mps.tensors{1}.A;
+B = site_mps.tensors{2}.A;
+if bond > size(A,2)
+    T1 = Tensor(cat(2,A,zeros(size(A,1),bond-size(A,2),size(A,3))));
+    T2 = Tensor(cat(1,B,zeros(bond-size(B,1),size(B,2),size(B,3))));
+else
+    T1 = Tensor(A);
+    T2 = Tensor(B);
+end
 
 % String the maximally mixed MPS states together, one for each site
 ms = cell(1,2*n);
