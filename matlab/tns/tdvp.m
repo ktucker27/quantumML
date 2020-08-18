@@ -9,19 +9,19 @@ EPS = 1e-12;
 numt = floor(tfinal/dt + 1);
 tvec = zeros(1,numt);
 mps_out = cell(1, numt);
-mps_out{1} = mps;
 eout = zeros(1,numt);
 
 n = mps.num_sites();
 
 % Right normalize the state if it's not already
-if ~mps.is_right_normal(EPS)
-    mps.left_normalize();
-    mps.right_normalize();
+ms = mps.substate(1:n);
+if ~ms.is_right_normal(EPS)
+    ms.left_normalize();
+    ms.right_normalize();
 end
 
-ms = mps.substate(1:n);
-msd = mps.dagger();
+mps_out{1} = MPS(ms.tensors);
+msd = ms.dagger();
 
 % Initialize the R list
 R = cell(1,n);
