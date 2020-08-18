@@ -117,7 +117,7 @@ end
 
 % Do the comparison
 if max(abs(eout - eout0)) > tol
-    disp('FAIL: Computed energy did not match expected');
+    disp(['FAIL: Computed energy did not match expected, error: ', num2str(max(abs(eout - eout0)))]);
     pass = 0;
 end
 end
