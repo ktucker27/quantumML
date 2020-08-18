@@ -46,14 +46,14 @@ for itidx=1:2*maxit
         % Contract the MPO state with R
         TR = R{ii};
         if ii < n
-            TR = TR.squeeze();
+            TR = TR.end_squeeze();
         end
         A = mpo.tensors{ii}.contract(TR, [2,2]);
         
         % Contract the result with L
         TL = L{ii};
         if ii > 1
-            TL = TL.squeeze();
+            TL = TL.end_squeeze();
         end
         A = A.contract(TL, [1,2]);
         

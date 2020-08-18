@@ -275,6 +275,9 @@ classdef Tensor < handle
         function T = squeeze(obj)
             T = Tensor(squeeze(obj.A));
         end
+        function T = end_squeeze(obj)
+            T = Tensor(obj.A);
+        end
         function C = contract(obj, T, indices)
             r1 = obj.rank();
             r2 = T.rank();

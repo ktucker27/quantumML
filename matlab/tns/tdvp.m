@@ -44,7 +44,7 @@ endidx = n;
 
 itidx = 1;
 t = 0;
-while t < tfinal
+while abs(t) < abs(tfinal)
     % Sweep to the right/left updating tensors
     for ii=startidx:idxinc:endidx
         nextidx = ii + idxinc;
@@ -54,14 +54,14 @@ while t < tfinal
         % Contract the MPO state with R
         TR = R{ii};
         if ii < n
-            TR = TR.squeeze();
+            TR = TR.end_squeeze();
         end
         H = mpo.tensors{ii}.contract(TR, [2,2]);
         
         % Contract the result with L
         TL = L{ii};
         if ii > 1
-            TL = TL.squeeze();
+            TL = TL.end_squeeze();
         end
         H = H.contract(TL, [1,2]);
         
