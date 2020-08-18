@@ -1,4 +1,8 @@
-function mps = build_init_purification(n, pdim)
+function mps = build_init_purification(n, pdim, bond)
+
+if nargin < 3
+    bond = 1;
+end
 
 % Build a maximally mixed state between a physical site and an auxiliary
 % site
@@ -19,8 +23,17 @@ T2 = site_mps.tensors{2};
 % String the maximally mixed MPS states together, one for each site
 ms = cell(1,2*n);
 for ii=1:n
-    ms{2*(ii-1)+1} = Tensor(T1.A, T1.rank());
-    ms{2*(ii-1)+2} = Tensor(T2.A, T2.rank());
+    if ii == 1 || bond == 1
+        ms{2*(ii-1)+1} = Tensor(T1.A, T1.rank());
+    else
+        ms{2*(ii-1)+1} = Tensor(cat(1,T1.A,zeros(bond-1,size(T1.A,2),size(T1.A,3))));
+    end
+    
+    if ii == n || bond == 1
+        ms{2*(ii-1)+2} = Tensor(T2.A, T2.rank());
+    else
+        ms{2*(ii-1)+2} = Tensor(cat(2,T2.A,zeros(size(T2.A,1),bond-1,size(T2.A,3))));
+    end
 end
 
 mps = MPS(ms);
