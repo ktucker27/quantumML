@@ -1,4 +1,4 @@
-function [tvec, mps_out, eout] = tdvp(mpo, mps, dt, tfinal, debug)
+function [tvec, mps_out, eout] = tdvp(mpo, mps, dt, tfinal, debug, ef)
 
 if nargin < 5
     debug = false;
@@ -22,6 +22,17 @@ end
 
 mps_out{1} = MPS(ms.tensors);
 msd = ms.dagger();
+
+% Compute the initial energy
+mpo_ms = apply_mpo(mpo, ms);
+eout(1) = ms.inner(mpo_ms)/ms.inner(ms);
+
+% If we received a final energy, track the sign of the delta
+% so we know when to stop
+de = 0;
+if nargin > 5
+    de = sign(eout(1) - ef);
+end
 
 % Initialize the R list
 R = cell(1,n);
@@ -196,6 +207,15 @@ while abs(t) < abs(tfinal)
         
         mpo_ms = apply_mpo(mpo, ms);
         eout(itidx) = ms.inner(mpo_ms)/ms.inner(ms);
+        
+        if de ~= 0
+            if de ~= sign(eout(itidx) - ef)
+                eout = eout(1:itidx);
+                tvec = tvec(1:itidx);
+                mps_out = mps_out(1:itidx);
+                break
+            end
+        end
         
         if debug
             if mod(itidx-1,10) == 0
