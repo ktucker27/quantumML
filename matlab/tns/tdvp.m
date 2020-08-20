@@ -69,13 +69,18 @@ while abs(t) < abs(tfinal)
         
         % Group the tensor into a matrix
         mdims = H.dim([5,3,1]);
-        H = H.group({[6,4,2],[5,3,1]});
+        Hmat = H.group({[6,4,2],[5,3,1]});
         
         % Vectorize the current tensor
         v = ms.tensors{ii}.group({[1,2,3]}).A;
         
         % Evolve according to H
-        v = expm(-1i*H.A*dt/2)*v;
+        if imag(dt) == 0
+            v = expm(-1i*Hmat.A*dt/2)*v;
+        else
+            nv = norm(v);
+            v = lanczos_expm(-1i*Hmat.A*dt/2,v/nv,floor(size(v,1)*0.05))*nv;
+        end
         M = Tensor(v);
         M2 = M.split({[1,2,3;mdims]});
         
@@ -148,7 +153,12 @@ while abs(t) < abs(tfinal)
             v = C.group({[1,2]}).A;
             
             % Evolve according to K
-            v = expm(1i*K.A*dt/2)*v;
+            if imag(dt) == 0
+                v = expm(1i*K.A*dt/2)*v;
+            else
+                nv = norm(v);
+                v = lanczos_expm(1i*K.A*dt/2,v/nv,floor(size(v,1)*0.05))*nv;
+            end
             C = Tensor(v);
             C = C.split({[1,2;mdims]});
             
