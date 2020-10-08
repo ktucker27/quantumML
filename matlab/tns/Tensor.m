@@ -269,14 +269,40 @@ classdef Tensor < handle
             TS = Tensor(s, 2);
             TV = Tensor(v, 2);
         end
+        function [TU,TS,TV] = svd_trunc(obj, tol)
+            if obj.rank() ~= 2
+                error('SVD can only be performed on a rank 2 tensor');
+            end
+            
+            [u,s,v] = svd(obj.A, 'econ');
+            
+            idx = find(diag(s) < tol);
+            if size(idx,1) == 0
+                end_idx = size(u,2);
+            else
+                end_idx = idx(1) - 1;
+            end
+            
+            if end_idx == 0
+                error('Found SVD truncation rank of zero');
+            end
+            
+            TU = Tensor(u(:,1:end_idx), 2);
+            TS = Tensor(s(1:end_idx,1:end_idx), 2);
+            TV = Tensor(v(:,1:end_idx), 2);
+        end
         function T = conjugate(obj)
             T = Tensor(conj(obj.A), obj.tensor_rank);
         end
         function T = squeeze(obj)
             T = Tensor(squeeze(obj.A));
         end
-        function T = end_squeeze(obj)
-            T = Tensor(obj.A);
+        function T = end_squeeze(obj, minrank)
+            if nargin > 1 && minrank > obj.rank_from_matrix()
+                T = Tensor(obj.A, minrank);
+            else
+                T = Tensor(obj.A);
+            end
         end
         function C = contract(obj, T, indices)
             r1 = obj.rank();

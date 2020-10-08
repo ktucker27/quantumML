@@ -18,9 +18,12 @@ classdef MPS < handle
             obj.tensors = tensors;
             
             % Validate the incoming tensors
-            n = size(tensors,2);
+            obj.validate();
+        end
+        function validate(obj)
+            n = size(obj.tensors,2);
             for ii=1:n
-                T = tensors{ii};
+                T = obj.tensors{ii};
                 
                 if T.rank() ~= 3
                     error(['Expected rank 3 tensor at site ', num2str(ii)]);
@@ -31,12 +34,16 @@ classdef MPS < handle
                     iim1 = n;
                 end
                 
-                if tensors{iim1}.dim(2) ~= T.dim(1)
+                if obj.tensors{iim1}.dim(2) ~= T.dim(1)
                     error(['Bond dimension mismatch between sites ', num2str(iim1), ' and ', num2str(ii)]);
                 end
             end
         end
-        function set_tensor(obj, ii, T)
+        function set_tensor(obj, ii, T, val)
+            if nargin < 4
+                val = true;
+            end
+            
             if T.rank() ~= 3
                 error(['Expected rank 3 tensor at site ', num2str(ii)]);
             end
@@ -48,7 +55,7 @@ classdef MPS < handle
                 iim1 = n;
             end
             
-            if obj.tensors{iim1}.dim(2) ~= T.dim(1)
+            if val && obj.tensors{iim1}.dim(2) ~= T.dim(1)
                 error(['Bond dimension mismatch between sites ', num2str(iim1), ' and ', num2str(ii)]);
             end
             
@@ -57,7 +64,7 @@ classdef MPS < handle
                 iip1 = 1;
             end
             
-            if obj.tensors{iip1}.dim(1) ~= T.dim(2)
+            if val && obj.tensors{iip1}.dim(1) ~= T.dim(2)
                 error(['Bond dimension mismatch between sites ', num2str(ii), ' and ', num2str(iip1)]);
             end
             
