@@ -20,6 +20,12 @@ if purification_test() ~= 1
     pass = 0;
 end
 
+disp('  oat_test');
+if oat_test() ~= 1
+    disp('FAIL: mpo_test.oat_test');
+    pass = 0;
+end
+
 end
 
 function pass = matrix_test()
@@ -65,6 +71,39 @@ H = full(thermal_ham(n, pdim, 0, V));
 [~, ~, sz, sx, sy] = local_ops(pdim);
 ops = {-0.5*sx,sx;-0.5*sy,sy;sz,sz};
 [mpo,~] = build_long_range_mpo(ops,pdim,n,rmult,rpow,N);
+H2 = mpo.matrix();
+
+if max(max(abs(H - H2))) > tol
+    disp('FAIL: Long range MPO does not match expected matrix');
+    pass = 0;
+end
+
+end
+
+function pass = oat_test()
+
+pass = 1;
+
+tol = 1e-15;
+
+n = 4;
+pdim = 2;
+rmult = 2;
+rpow = 0;
+N = 3;
+
+% Build the full product space Hamiltonian
+csz = zeros(pdim^n, pdim^n);
+for i=1:n
+    [~, ~, szi] = prod_ops(i, pdim, n);
+    csz = csz + szi;
+end
+H = csz*csz;
+
+[~, ~, sz, ~, ~] = local_ops(pdim);
+ops = {sz,sz};
+lops = {(1/n)*eye(pdim)};
+[mpo,~] = build_long_range_mpo(ops,pdim,n,rmult,rpow,N,lops);
 H2 = mpo.matrix();
 
 if max(max(abs(H - H2))) > tol
