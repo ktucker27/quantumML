@@ -57,6 +57,14 @@ end
 
 disp(' ')
 
+disp('tdvp_gse_test:');
+if tdvp_gse_test() ~= 1
+    disp('FAIL: tdvp_gse_test');
+    pass = 0;
+end
+
+disp(' ')
+
 if pass == 1
     disp('test_tns PASSED');
 else

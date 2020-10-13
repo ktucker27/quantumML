@@ -191,11 +191,19 @@ classdef MPS < handle
                 end
             end
         end
-        function left_normalize(obj)
+        function left_normalize(obj, tol)
+            if nargin < 2
+                tol = 0;
+            end
+            
             for ii=1:obj.num_sites()-1
                 mdims = obj.tensors{ii}.dims();
                 M = obj.tensors{ii}.group({[1,3],2});
-                [TU, TS, TV] = M.svd();
+                if tol > 0
+                    [TU, TS, TV] = M.svd_trunc(tol);
+                else
+                    [TU, TS, TV] = M.svd();
+                end
                 obj.tensors{ii} = TU.split({[1,3;mdims([1,3])],2});
                 
                 % Update the next tensor
@@ -203,11 +211,19 @@ classdef MPS < handle
                 obj.tensors{ii+1} = next_m.contract(obj.tensors{ii+1},[2,1]);
             end
         end
-        function right_normalize(obj)
+        function right_normalize(obj, tol)
+            if nargin < 2
+                tol = 0;
+            end
+            
             for ii=obj.num_sites():-1:2
                 mdims = obj.tensors{ii}.dims();
                 M = obj.tensors{ii}.group({1,[2,3]});
-                [TU, TS, TV] = M.svd();
+                if tol > 0
+                    [TU, TS, TV] = M.svd_trunc(tol);
+                else
+                    [TU, TS, TV] = M.svd();
+                end
                 obj.tensors{ii} = TV.conjugate().split({[2,3;mdims([2,3])],1});
                 
                 % Update the next tensor

@@ -6,11 +6,11 @@ num_two_site = size(two_site,2);
 d = num_one_site + num_two_site + 1;
 
 M = zeros(d, d, pdim, pdim);
+M(1,1,:,:) = eye(pdim);
 M(end,end,:,:) = eye(pdim);
 
 for ii=1:num_one_site
-    M(ii,1,:,:) = eye(pdim);
-    M(end,ii,:,:) = one_site{ii};
+    M(end,1,:,:) = reshape(M(end,1,:,:), [pdim,pdim]) + one_site{ii};
 end
 
 for ii=1:num_two_site

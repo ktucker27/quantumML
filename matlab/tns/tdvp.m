@@ -1,10 +1,14 @@
-function [tvec, mps_out, eout] = tdvp(mpo, mps, dt, tfinal, debug, ef)
+function [tvec, mps_out, eout] = tdvp(mpo, mps, dt, tfinal, eps, debug, ef)
 
 if nargin < 5
+    eps = 0;
+end
+
+if nargin < 6
     debug = false;
 end
 
-EPS = 1e-12;
+TOL = 1e-12;
 
 numt = floor(tfinal/dt + 1);
 tvec = zeros(1,numt);
@@ -15,7 +19,7 @@ n = mps.num_sites();
 
 % Right normalize the state if it's not already
 ms = mps.substate(1:n);
-if ~ms.is_right_normal(EPS)
+if ~ms.is_right_normal(TOL)
     ms.left_normalize();
     ms.right_normalize();
 end
@@ -30,7 +34,7 @@ eout(1) = ms.inner(mpo_ms)/ms.inner(ms);
 % If we received a final energy, track the sign of the delta
 % so we know when to stop
 de = 0;
-if nargin > 5
+if nargin > 6
     de = sign(eout(1) - ef);
 end
 
@@ -67,14 +71,14 @@ while abs(t) < abs(tfinal)
         % Contract the MPO state with R
         TR = R{ii};
         if ii < n
-            TR = TR.end_squeeze();
+            TR = TR.end_squeeze(3);
         end
         H = mpo.tensors{ii}.contract(TR, [2,2]);
         
         % Contract the result with L
         TL = L{ii};
         if ii > 1
-            TL = TL.end_squeeze();
+            TL = TL.end_squeeze(3);
         end
         H = H.contract(TL, [1,2]);
         
@@ -92,28 +96,28 @@ while abs(t) < abs(tfinal)
             nv = norm(v);
             v = lanczos_expm(-1i*Hmat.A*dt/2,v/nv,floor(size(v,1)*0.05))*nv;
         end
-        M = Tensor(v);
+        M = Tensor(v,1);
         M2 = M.split({[1,2,3;mdims]});
         
         % Update the tensors
         if idxinc > 0
             % Left normalize
             M2 = M2.group({[1,3],2});
-            [TU, TS, TV] = M2.svd();
+            [TU, TS, TV] = M2.svd_trunc(eps);
             new_m = TU.split({[1,3;mdims([1,3])],2});
             
             C = TS.contract(TV.conjugate(), [2,2]);
         else
             % Right normalize
             M2 = M2.group({1,[2,3]});
-            [TU, TS, TV] = M2.svd();
+            [TU, TS, TV] = M2.svd_trunc(eps);
             new_m = TV.conjugate().split({[2,3;mdims([2,3])],1});
             
             C = TU.contract(TS, [2,1]);
         end
         
-        ms.set_tensor(ii, new_m);
-        msd.set_tensor(ii, new_m.conjugate());
+        ms.set_tensor(ii, new_m, false);
+        msd.set_tensor(ii, new_m.conjugate(), false);
         
         % Update the L/R tensor for this site
         if idxinc > 0
@@ -131,7 +135,7 @@ while abs(t) < abs(tfinal)
             end
             
             if nextidx <= n
-                TL = L{nextidx}.end_squeeze();
+                TL = L{nextidx}.end_squeeze(3);
             end
         else
             if ii == n
@@ -148,7 +152,7 @@ while abs(t) < abs(tfinal)
             end
             
             if nextidx >= 1
-                TR = R{nextidx}.end_squeeze();
+                TR = R{nextidx}.end_squeeze(3);
             end
         end
         
@@ -170,7 +174,7 @@ while abs(t) < abs(tfinal)
                 nv = norm(v);
                 v = lanczos_expm(1i*K.A*dt/2,v/nv,floor(size(v,1)*0.05))*nv;
             end
-            C = Tensor(v);
+            C = Tensor(v,1);
             C = C.split({[1,2;mdims]});
             
             % Compute the next site tensor
@@ -182,9 +186,12 @@ while abs(t) < abs(tfinal)
             end
             
             % Update the next site
-            ms.set_tensor(nextidx, next_m);
-            msd.set_tensor(nextidx, next_m.conjugate());
+            ms.set_tensor(nextidx, next_m, false);
+            msd.set_tensor(nextidx, next_m.conjugate(), false);
         end
+        
+        ms.validate();
+        msd.validate();
     end
     
     % Flip the sweep direction

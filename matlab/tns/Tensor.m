@@ -276,16 +276,7 @@ classdef Tensor < handle
             
             [u,s,v] = svd(obj.A, 'econ');
             
-            idx = find(diag(s) < tol);
-            if size(idx,1) == 0
-                end_idx = size(u,2);
-            else
-                end_idx = idx(1) - 1;
-            end
-            
-            if end_idx == 0
-                error('Found SVD truncation rank of zero');
-            end
+            end_idx = get_trunc_idx(diag(s), tol);
             
             TU = Tensor(u(:,1:end_idx), 2);
             TS = Tensor(s(1:end_idx,1:end_idx), 2);
