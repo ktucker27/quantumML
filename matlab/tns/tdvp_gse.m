@@ -27,6 +27,17 @@ end
 
 mps_out{1} = MPS(ms.tensors);
 
+% Calculate the max bond dimensions
+max_r = zeros(1,n-1);
+leftmax = 1;
+rightmax = 1;
+for ii=1:floor(n/2)
+    leftmax = leftmax*ms.tensors{ii}.dim(3);
+    rightmax = rightmax*ms.tensors{n-ii+1}.dim(3);
+    max_r(ii) = leftmax;
+    max_r(n-ii) = rightmax;
+end
+
 % Compute the initial energy
 mpo_ms = apply_mpo(mpo, ms);
 eout(1) = ms.inner(mpo_ms)/ms.inner(ms);
@@ -62,37 +73,37 @@ while abs(t) < abs(tfinal)
         
         % Compute the projector onto the null space
         B = TV.A';
-        cols = size(B,2);
-        P = eye(cols) - B'*B;
         
-        % Compute the combined density operator for all the other states
-        rho = zeros(cols, cols);
-        for kk=2:kdim
-            if site_idx == n
-                C_tilde = mps_exp{kk}.tensors{site_idx};
-            else
-                C_tilde_Bdag = mps_exp{kk}.tensors{site_idx+1}.contract(TB.conjugate(),[2,2;3,3]);
-                C_tilde = mps_exp{kk}.tensors{site_idx}.contract(C_tilde_Bdag, [2,1]);
-                C_tilde = C_tilde.split({1,3,2});
-                mps_exp{kk}.set_tensor(site_idx, C_tilde, false);
+        if site_idx > 1 && size(B,1) < cdims(2)*cdims(3) && size(B,1) < max_r(site_idx-1)
+            cols = size(B,2);
+            P = eye(cols) - B'*B;
+            
+            % Compute the combined density operator for all the other states
+            rho = zeros(cols, cols);
+            for kk=2:kdim
+                if site_idx == n
+                    C_tilde = mps_exp{kk}.tensors{site_idx};
+                else
+                    C_tilde_Bdag = mps_exp{kk}.tensors{site_idx+1}.contract(TB.conjugate(),[2,2;3,3]);
+                    C_tilde = mps_exp{kk}.tensors{site_idx}.contract(C_tilde_Bdag, [2,1]);
+                    C_tilde = C_tilde.split({1,3,2});
+                    mps_exp{kk}.set_tensor(site_idx, C_tilde, false);
+                end
+                
+                C_tilde_mat = C_tilde.group({1,[2,3]}).A;
+                
+                rho = rho + C_tilde_mat'*C_tilde_mat;
             end
             
-            C_tilde_mat = C_tilde.group({1,[2,3]}).A;
+            % Project onto the nullspace if it has a nontrivial dimension
+            if norm(P)/norm(rho) > TOL
+                rho = P*rho*P;
+            end
             
-            rho = rho + C_tilde_mat'*C_tilde_mat;
-        end
-        
-        % Project onto the nullspace if it has a nontrivial dimension
-        if norm(P)/norm(rho) > TOL
-            rho = P*rho*P;
-        end
-        
-        % Diagonalize and truncate rho
-        [~, Sbar, Bbar] = svd(rho);
-        end_idx = get_trunc_idx(diag(Sbar), epsm);
-        
-        % TODO - Properly check for max bond dimension and do it earlier
-        if site_idx > 1 && size(B,1) < cdims(2)*cdims(3)
+            % Diagonalize and truncate rho
+            [~, Sbar, Bbar] = svd(rho);
+            end_idx = get_trunc_idx(diag(Sbar), epsm);
+            
             % Extract the new basis
             Bbar = Bbar(:,1:end_idx);
             
@@ -100,6 +111,7 @@ while abs(t) < abs(tfinal)
         else
             TB = Tensor(B);
         end
+        
         TB = TB.split({1,[2,3;cdims([2,3])]});
         ms.set_tensor(site_idx, TB, false);
         

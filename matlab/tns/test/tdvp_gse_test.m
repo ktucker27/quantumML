@@ -25,7 +25,7 @@ h = 1;
 dt = 0.01;
 tfinal = 1;
 kdim = 3;
-eps_vec = [0,0,0];
+eps_vec = [1e-6,1e-8,0];
 
 [~, ~, sz, sx, ~] = local_ops(pdim);
 one_site = {-h*sz};
