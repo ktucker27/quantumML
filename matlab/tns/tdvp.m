@@ -17,6 +17,14 @@ eout = zeros(1,numt);
 
 n = mps.num_sites();
 
+if imag(dt) == 0
+    lanczos_fun = @(x)(exp(1i*x));
+    lanczos_mult = 1;
+else
+    lanczos_fun = @(x)(exp(x));
+    lanczos_mult = 1i;
+end
+
 % Right normalize the state if it's not already
 ms = mps.substate(1:n);
 if ~ms.is_right_normal(TOL)
@@ -90,16 +98,9 @@ while abs(t) < abs(tfinal)
         v = ms.tensors{ii}.group({[1,2,3]}).A;
         
         % Evolve according to H
-        if imag(dt) == 0
-            %v = expm(-1i*Hmat.A*dt/2)*v;
-             
-            fun = @(x)(exp(1i*x));
-            nv = norm(v);
-            v = lanczos_expm(-Hmat.A*dt/2,v/nv,max([floor(size(v,1)*0.05),2]), fun)*nv;
-        else
-            nv = norm(v);
-            v = lanczos_expm(-1i*Hmat.A*dt/2,v/nv,max([floor(size(v,1)*0.05),0]))*nv;
-        end
+        nv = norm(v);
+        v = lanczos_expm(-lanczos_mult*Hmat.A*dt/2,v/nv,max([floor(size(v,1)*0.05),2]),lanczos_fun)*nv;
+        
         M = Tensor(v,1);
         M2 = M.split({[1,2,3;mdims]});
         
@@ -172,16 +173,9 @@ while abs(t) < abs(tfinal)
             v = C.group({[1,2]}).A;
             
             % Evolve according to K
-            if imag(dt) == 0
-                %v = expm(1i*K.A*dt/2)*v;
-                
-                fun = @(x)(exp(1i*x));
-                nv = norm(v);
-                v = lanczos_expm(K.A*dt/2,v/nv,max([floor(size(v,1)*0.05),2]), fun)*nv;
-            else
-                nv = norm(v);
-                v = lanczos_expm(1i*K.A*dt/2,v/nv,floor(size(v,1)*0.05))*nv;
-            end
+            nv = norm(v);
+            v = lanczos_expm(lanczos_mult*K.A*dt/2,v/nv,max([floor(size(v,1)*0.05),2]),lanczos_fun)*nv;
+            
             C = Tensor(v,1);
             C = C.split({[1,2;mdims]});
             
