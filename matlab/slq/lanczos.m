@@ -15,7 +15,10 @@ for i=1:numsteps
     end
     beta = norm(z);
     if abs(beta) < 1e-10
-        disp(['WARNING - Found linear dependence on step ', num2str(i)]);
+        %disp(['WARNING - Found linear dependence on step ', num2str(i)]);
+        numsteps = i-1;
+        Q = Q(:,1:numsteps+1);
+        T = T(1:numsteps+1, 1:numsteps+1);
         break;
     end
     Q(:,i+1) = z/beta;

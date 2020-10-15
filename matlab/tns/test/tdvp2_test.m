@@ -42,8 +42,11 @@ end
 psi0 = [1;zeros(pdim^n-1,1)];
 A = zeros(1,1,2);
 A(1,1,1) = 1;
-TA = Tensor(A);
-mps = MPS({TA,TA,TA,TA});
+ms = cell(1,n);
+for ii=1:n
+    ms{ii} = Tensor(A);
+end
+mps = MPS(ms);
 
 [tvec, mps_out] = tdvp2(mpo, mps, dt, tfinal, svdtol, debug);
 

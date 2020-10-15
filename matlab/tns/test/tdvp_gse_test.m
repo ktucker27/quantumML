@@ -16,7 +16,7 @@ pass = 1;
 
 debug = true;
 
-tol = 1e-12;
+tol = 1e-5;
 
 n = 4;
 pdim = 2;
@@ -47,8 +47,11 @@ two_site_exp = {{1i*dt*J*sx,sx}};
 psi0 = [1;zeros(pdim^n-1,1)];
 A = zeros(1,1,2);
 A(1,1,1) = 1;
-TA = Tensor(A);
-mps = MPS({TA,TA,TA,TA});
+ms = cell(1,n);
+for ii=1:n
+    ms{ii} = Tensor(A);
+end
+mps = MPS(ms);
 
 [tvec, mps_out] = tdvp_gse(mpo, mpo_exp, kdim, mps, dt, tfinal, eps_vec, debug);
 

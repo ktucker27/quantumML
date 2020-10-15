@@ -1,4 +1,8 @@
-function b = lanczos_expm(A, v, m)
+function b = lanczos_expm(A, v, m, fun)
+
+if nargin < 4
+    fun = @(x)(exp(x));
+end
 
 n = size(A,1);
 
@@ -10,4 +14,4 @@ end
     
 [evec, lamda] = eig(T);
 
-b = Q*evec*diag(exp(diag(lamda)))*evec(1,:)';
+b = Q*evec*diag(fun(diag(lamda)))*evec(1,:)';

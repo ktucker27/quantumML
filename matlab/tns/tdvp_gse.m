@@ -81,14 +81,7 @@ while abs(t) < abs(tfinal)
             % Compute the combined density operator for all the other states
             rho = zeros(cols, cols);
             for kk=2:kdim
-                if site_idx == n
-                    C_tilde = mps_exp{kk}.tensors{site_idx};
-                else
-                    C_tilde_Bdag = mps_exp{kk}.tensors{site_idx+1}.contract(TB.conjugate(),[2,2;3,3]);
-                    C_tilde = mps_exp{kk}.tensors{site_idx}.contract(C_tilde_Bdag, [2,1]);
-                    C_tilde = C_tilde.split({1,3,2});
-                    mps_exp{kk}.set_tensor(site_idx, C_tilde, false);
-                end
+                C_tilde = mps_exp{kk}.tensors{site_idx};
                 
                 C_tilde_mat = C_tilde.group({1,[2,3]}).A;
                 
@@ -120,6 +113,13 @@ while abs(t) < abs(tfinal)
             CBdag = C.contract(TB.conjugate(),[2,2;3,3]);
             C = ms.tensors{site_idx-1}.contract(CBdag, [2,1]);
             C = C.split({1,3,2});
+            
+            for kk=2:kdim
+                C_tilde_Bdag = mps_exp{kk}.tensors{site_idx}.contract(TB.conjugate(),[2,2;3,3]);
+                C_tilde = mps_exp{kk}.tensors{site_idx-1}.contract(C_tilde_Bdag, [2,1]);
+                C_tilde = C_tilde.split({1,3,2});
+                mps_exp{kk}.set_tensor(site_idx-1, C_tilde, false);
+            end
         end
     end
     ms.validate();
