@@ -16,7 +16,7 @@ pass = 1;
 
 debug = true;
 
-tol = 1e-12;
+tol = 1e-6;
 
 n = 4;
 pdim = 2;

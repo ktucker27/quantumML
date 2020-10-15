@@ -22,7 +22,7 @@ pass = 1;
 
 debug = true;
 
-tol = 1e-5;
+tol = 1e-6;
 
 n = 4;
 pdim = 2;

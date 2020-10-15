@@ -100,7 +100,11 @@ while abs(t) < abs(tfinal)
         
         % Evolve according to H
         if imag(dt) == 0
-            v = expm(-1i*Hmat.A*dt/2)*v;
+            %v = expm(-1i*Hmat.A*dt/2)*v;
+            
+            fun = @(x)(exp(1i*x));
+            nv = norm(v);
+            v = lanczos_expm(-Hmat.A*dt/2,v/nv,max([floor(size(v,1)*0.05),2]), fun)*nv;
         else
             nv = norm(v);
             v = lanczos_expm(-1i*Hmat.A*dt/2,v/nv,floor(size(v,1)*0.05))*nv;
@@ -184,7 +188,11 @@ while abs(t) < abs(tfinal)
             
             % Evolve according to H
             if imag(dt) == 0
-                v = expm(1i*Hmat.A*dt/2)*v;
+                %v = expm(1i*Hmat.A*dt/2)*v;
+                
+                fun = @(x)(exp(1i*x));
+                nv = norm(v);
+                v = lanczos_expm(Hmat.A*dt/2,v/nv,max([floor(size(v,1)*0.05),2]), fun)*nv;
             else
                 nv = norm(v);
                 v = lanczos_expm(1i*Hmat.A*dt/2,v/nv,floor(size(v,1)*0.05))*nv;
