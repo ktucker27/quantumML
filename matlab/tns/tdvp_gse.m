@@ -130,7 +130,6 @@ while abs(t) < abs(tfinal)
     % Perform a single TDVP pass
     [~, tdvp_mps_out, tdvp_eout] = tdvp(mpo, ms, dt, dt, eps_tdvp, false);
     ms = tdvp_mps_out{end};
-    eout(itidx) = tdvp_eout(end);
     
     % Make sure we only did one iteration of TDVP
     if size(tdvp_eout,2) ~= 2
@@ -144,6 +143,8 @@ while abs(t) < abs(tfinal)
     % Update output variables
     tvec(itidx) = t;
     mps_out{itidx} = MPS(ms.tensors);
+    
+    eout(itidx) = tdvp_eout(end);
     
     if de ~= 0
         if de ~= sign(eout(itidx) - ef)
