@@ -86,7 +86,7 @@ pass = 1;
 
 tol = 1e-15;
 
-n = 4;
+n = 5;
 pdim = 2;
 rmult = 2;
 rpow = 0;
@@ -100,9 +100,10 @@ for i=1:n
 end
 H = csz*csz;
 
+% Build the MPO
 [~, ~, sz, ~, ~] = local_ops(pdim);
 ops = {sz,sz};
-lops = {(1/n)*eye(pdim)};
+lops = {(1/4)*eye(pdim)};
 [mpo,~] = build_long_range_mpo(ops,pdim,n,rmult,rpow,N,lops);
 H2 = mpo.matrix();
 
