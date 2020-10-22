@@ -1,4 +1,8 @@
-function [mpo, M] = build_purification_mpo(ops, pdim, n, rmult, rpow, N)
+function [mpo, M] = build_purification_mpo(ops, pdim, n, rmult, rpow, N, lops)
+
+if nargin < 7
+    lops = {};
+end
 
 % Determine the N term expansion for 1/r^rpow
 [alpha, beta, ~] = pow_2_exp(rpow, 3, N);
@@ -26,6 +30,12 @@ for ii=1:size(ops,1)
         M(stateidx,stateidx+1,:,:) = beta(jj)*eye(pdim);
         M(d,stateidx+1,:,:) = rmult*alpha(jj)*ops{ii,1};
     end
+end
+
+% Add local operators as a direct transition from the second state to the
+% last
+for ii=1:size(lops,1)
+    M(d,2,:,:) = reshape(M(d,2,:,:),[pdim,pdim]) + lops{ii};
 end
 
 % Assemble the MPO
