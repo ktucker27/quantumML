@@ -8,6 +8,12 @@ if transverse_ising_test() ~= 1
     pass = 0;
 end
 
+disp('  oat_test');
+if oat_test() ~= 1
+    disp('FAIL: tdvp_gse_test.oat_test');
+    pass = 0;
+end
+
 end
 
 function pass = transverse_ising_test()
@@ -62,6 +68,85 @@ for ii=1:size(tvec,2)
     psi2 = mps_out{ii}.state_vector();
     phaser = psi(1,1)/psi2(1,1);
     if abs(abs(phaser) - 1) > tol
+        disp(['FAIL: Found phaser without unit modulus, error: ', num2str(abs(abs(phaser) - 1))]);
+        pass = 0;
+        return
+    end
+    evec(ii) = max(abs(psi - psi2*phaser));
+    psi = dtmat*psi;
+end
+
+if max(evec) > tol
+    disp('FAIL: TDVP state differs from analytical solution');
+    pass = 0;
+end
+
+end
+
+function pass = oat_test()
+
+pass = 1;
+
+debug = true;
+
+tol = 1e-4;
+
+n = 10;
+pdim = 2;
+chi = 1;
+rmult = 2;
+rpow = 0;
+N = 3;
+dt = 0.01;
+tfinal = 1;
+kdim = 3;
+eps_vec = [1e-6,1e-6,0];
+
+% Build the MPO
+[~, ~, sz, ~, ~] = local_ops(pdim);
+ops = {chi*sz,sz};
+lops = {(1/4)*eye(pdim)};
+[mpo,~] = build_long_range_mpo(ops,pdim,n,rmult,rpow,N,lops);
+
+% Build the expansion MPO
+ops_exp = {-1i*dt*chi*sz,sz};
+lops_exp = {(1/n-1i*dt*1/4)*eye(pdim)};
+[mpo_exp,~] = build_long_range_mpo(ops_exp,pdim,n,rmult,rpow,N,lops_exp);
+
+% Build the full product space Hamiltonian
+csx = zeros(pdim^n, pdim^n);
+csz = zeros(pdim^n, pdim^n);
+for i=1:n
+    [~, ~, szi, sxi] = prod_ops(i, pdim, n);
+    csx = csx + sxi;
+    csz = csz + szi;
+end
+H2 = csz*csz;
+
+% H = mpo.matrix();
+% if max(max(abs(H - H2))) > tol
+%     disp('FAIL: MPO matrix differs from expected matrix');
+%     pass = 0;
+% end
+
+% Get the initial condition +x
+[evecs, evals] = eig(csx);
+[~,idx] = max(diag(evals));
+psi0 = evecs(:,idx);
+mps = state_to_mps(psi0, n, pdim);
+mps.right_normalize(eps_vec(2));
+
+% Do the time evolution
+[tvec, mps_out] = tdvp_gse(mpo, mpo_exp, kdim, mps, dt, tfinal, eps_vec, debug);
+
+% Compare evolved state with the exact state
+evec = zeros(1,size(tvec,2));
+dtmat = expm(-1i*H2*dt);
+psi = psi0;
+for ii=1:size(tvec,2)
+    psi2 = mps_out{ii}.state_vector();
+    phaser = psi(1,1)/psi2(1,1);
+    if abs(abs(phaser) - 1) > 10*tol
         disp(['FAIL: Found phaser without unit modulus, error: ', num2str(abs(abs(phaser) - 1))]);
         pass = 0;
         return

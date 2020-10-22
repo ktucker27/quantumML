@@ -90,20 +90,23 @@ while abs(t) < abs(tfinal)
             
             % Project onto the nullspace if it has a nontrivial dimension
             if norm(P)/norm(rho) > TOL
+                trace_rho = trace(rho);
                 rho = P*rho*P;
+                
+                if(trace(rho)/trace_rho > 1e-10)
+                    % Diagonalize and truncate rho
+                    [~, Sbar, Bbar] = svd(rho);
+                    end_idx = get_trunc_idx(diag(Sbar), epsm);
+                    
+                    % Extract the new basis
+                    Bbar = Bbar(:,1:end_idx);
+                    
+                    B = [B;Bbar']; %#ok<AGROW>
+                end
             end
-            
-            % Diagonalize and truncate rho
-            [~, Sbar, Bbar] = svd(rho);
-            end_idx = get_trunc_idx(diag(Sbar), epsm);
-            
-            % Extract the new basis
-            Bbar = Bbar(:,1:end_idx);
-            
-            TB = Tensor([B;Bbar']);
-        else
-            TB = Tensor(B);
         end
+        
+        TB = Tensor(B);
         
         TB = TB.split({1,[2,3;cdims([2,3])]});
         ms.set_tensor(site_idx, TB, false);
