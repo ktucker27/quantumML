@@ -14,6 +14,12 @@ if oat_test() ~= 1
     pass = 0;
 end
 
+disp('  thermal_test');
+if thermal_test() ~= 1
+    disp('FAIL: tdvp_gse_test.thermal_test');
+    pass = 0;
+end
+
 end
 
 function pass = transverse_ising_test()
@@ -31,7 +37,7 @@ h = 1;
 dt = 0.01;
 tfinal = 1;
 kdim = 3;
-eps_vec = [1e-6,1e-8,0];
+eps_vec = [1e-6,1e-8,0,1e-10];
 
 [~, ~, sz, sx, ~] = local_ops(pdim);
 one_site = {-h*sz};
@@ -100,7 +106,7 @@ N = 3;
 dt = 0.01;
 tfinal = 1;
 kdim = 3;
-eps_vec = [1e-6,1e-6,0];
+eps_vec = [1e-6,1e-6,0,1e-10];
 
 % Build the MPO
 [~, ~, sz, ~, ~] = local_ops(pdim);
@@ -160,4 +166,64 @@ if max(evec) > tol
     pass = 0;
 end
 
+end
+
+function pass = thermal_test()
+
+pass = 1;
+
+debug = true;
+
+tol = 2e-4;
+
+n = 4;
+rpow = 3;
+rmult = 1;
+N = 2;
+pdim = 2;
+kdim = 3;
+eps_vec = [1e-6,1e-6,0,1e-6];
+[~, ~, sz, sx, sy] = local_ops(pdim);
+
+tfinal = -1i;
+dt = -0.01*1i;
+
+% Build the Hamiltonian matrix on the physical/auxiliary product space
+V = zeros(n,n);
+for ii=1:n
+    for jj=1:n
+        if ii ~= jj
+            V(ii,jj) = 1/abs(ii-jj)^3;
+        end
+    end
+end
+H = full(thermal_ham(n, pdim, 0, V));
+
+% Build the MPO
+ops = {-0.5*sx,sx;-0.5*sy,sy;sz,sz};
+mpo = build_purification_mpo(ops,pdim,n,rmult,rpow,N);
+
+% Build the expansion MPO
+ops_exp = {1i*dt*0.5*sx,sx;1i*dt*0.5*sy,sy;-1i*dt*sz,sz};
+lops_exp = {(1/n)*eye(pdim)};
+[mpo_exp] = build_purification_mpo(ops_exp,pdim,n,rmult,rpow,N,lops_exp);
+
+% Perform the imaginary time evolution
+mps0 = build_init_purification(n,pdim,1);
+[tvec, ~, eout] = tdvp_gse(mpo, mpo_exp, kdim, mps0, dt, tfinal, eps_vec, debug);
+
+% Get the exact energy expectations
+eout0 = zeros(size(tvec));
+for ii=1:size(tvec,2)
+    beta = 2*abs(tvec(ii));
+    rho = expm(-beta*H);
+    rho = rho/trace(rho);
+    eout0(ii) = trace(rho*H);
+end
+
+% Do the comparison
+if max(abs(eout - eout0)) > tol
+    disp(['FAIL: Computed energy did not match expected, error: ', num2str(max(abs(eout - eout0)))]);
+    pass = 0;
+end
 end

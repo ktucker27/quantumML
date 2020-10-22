@@ -3,6 +3,7 @@ function [tvec, mps_out, eout] = tdvp_gse(mpo, mpo_exp, kdim, mps, dt, tfinal, e
 epsk = eps(1);
 epsm = eps(2);
 eps_tdvp = eps(3);
+eps_rho = eps(4);
 
 if nargin < 8
     debug = false;
@@ -93,7 +94,7 @@ while abs(t) < abs(tfinal)
                 trace_rho = trace(rho);
                 rho = P*rho*P;
                 
-                if(trace(rho)/trace_rho > 1e-10)
+                if(trace(rho)/trace_rho > eps_rho)
                     % Diagonalize and truncate rho
                     [~, Sbar, Bbar] = svd(rho);
                     end_idx = get_trunc_idx(diag(Sbar), epsm);
