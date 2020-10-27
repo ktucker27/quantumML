@@ -1,4 +1,4 @@
-function [tvec, mps_out, eout] = tdvp(mpo, mps, dt, tfinal, eps, debug, ef)
+function [tvec, mps_out, eout, exp_out] = tdvp(mpo, mps, dt, tfinal, eps, debug, ef, exp_ops)
 
 if nargin < 5
     eps = 0;
@@ -8,12 +8,17 @@ if nargin < 6
     debug = false;
 end
 
+if nargin < 8
+    exp_ops = {};
+end
+
 TOL = 1e-12;
 
 numt = floor(tfinal/dt + 1);
 tvec = zeros(1,numt);
 mps_out = cell(1, numt);
 eout = zeros(1,numt);
+exp_out = zeros(size(exp_ops,2), numt);
 
 n = mps.num_sites();
 
@@ -38,11 +43,15 @@ msd = ms.dagger();
 % Compute the initial energy
 mpo_ms = apply_mpo(mpo, ms);
 eout(1) = ms.inner(mpo_ms)/ms.inner(ms);
+for exp_idx=1:size(exp_ops,2)
+    mpo_ms = apply_mpo(exp_ops{exp_idx}, ms);
+    exp_out(exp_idx, 1) = ms.inner(mpo_ms)/ms.inner(ms);
+end
 
 % If we received a final energy, track the sign of the delta
 % so we know when to stop
 de = 0;
-if nargin > 6
+if nargin > 6 && size(ef,1) ~= 0
     de = sign(eout(1) - ef);
 end
 
@@ -216,6 +225,10 @@ while abs(t) < abs(tfinal)
         
         mpo_ms = apply_mpo(mpo, ms);
         eout(itidx) = ms.inner(mpo_ms)/ms.inner(ms);
+        for exp_idx=1:size(exp_ops,2)
+            mpo_ms = apply_mpo(exp_ops{exp_idx}, ms);
+            exp_out(exp_idx, itidx) = ms.inner(mpo_ms)/ms.inner(ms);
+        end
         
         if de ~= 0
             if de ~= sign(eout(itidx) - ef)

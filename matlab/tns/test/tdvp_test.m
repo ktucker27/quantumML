@@ -94,10 +94,11 @@ dt = 0.01;
 tfinal = 1;
 
 % Build the MPO
-[~, ~, sz, ~, ~] = local_ops(pdim);
+[~, ~, sz, sx, ~] = local_ops(pdim);
 ops = {chi*sz,sz};
 lops = {(1/4)*eye(pdim)};
 [mpo,~] = build_long_range_mpo(ops,pdim,n,rmult,rpow,N,lops);
+mpo_x = build_mpo({sx},{},pdim,n);
 
 % Build the full product space Hamiltonian
 csx = zeros(pdim^n, pdim^n);
@@ -122,7 +123,7 @@ psi0 = evecs(:,idx);
 mps = state_to_mps(psi0, n, pdim);
 
 % Do the time evolution
-[tvec, mps_out] = tdvp(mpo, mps, dt, tfinal, 0, debug);
+[tvec, mps_out, ~, exp_out] = tdvp(mpo, mps, dt, tfinal, 0, debug, [], {mpo_x});
 
 % Compare evolved state with the exact state
 evec = zeros(1,size(tvec,2));
@@ -143,6 +144,13 @@ end
 if max(evec) > tol
     disp('FAIL: TDVP state differs from analytical solution');
     pass = 0;
+end
+
+% Compare S_x value to expected
+ex = (n/2)*cos(tvec).^(n-1);
+xerr = max(abs(ex - exp_out));
+if xerr > 1e-6
+    disp(['FAIL: Expected S_x value differs from exptected, error: ', num2str(xerr)]);
 end
 
 end
