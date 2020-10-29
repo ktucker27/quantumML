@@ -117,7 +117,7 @@ while abs(t) < abs(tfinal)
         
         % Evolve according to H
         nv = norm(v);
-        lsteps = min([max([floor(size(v,1)*0.05),2]), size(v,1)-1]);
+        lsteps = min([max([floor(size(v,1)*0.05),2]), size(v,1)-1, 10]);
         v = lanczos_expm(-lanczos_mult*Hmat.A*dt/2,v/nv,lsteps,lanczos_fun)*nv;
         
         M = Tensor(v);
@@ -199,7 +199,7 @@ while abs(t) < abs(tfinal)
             
             % Evolve according to H
             nv = norm(v);
-            lsteps = min([max([floor(size(v,1)*0.05),2]), size(v,1)-1]);
+            lsteps = min([max([floor(size(v,1)*0.05),2]), size(v,1)-1, 10]);
             v = lanczos_expm(lanczos_mult*Hmat.A*dt/2,v/nv,lsteps,lanczos_fun)*nv;
             
             C = Tensor(v);
@@ -267,7 +267,7 @@ while abs(t) < abs(tfinal)
         
         if debug
             if mod(itidx-1,10) == 0
-                disp(['t = ', num2str(t)]);
+                disp(['t = ', num2str(t), ', max rank: ', num2str(max(ms.rank()))]);
             end
         end
     end

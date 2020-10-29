@@ -123,7 +123,13 @@ H2 = csz*csz;
 [evecs, evals] = eig(csx);
 [~,idx] = max(diag(evals));
 psi0 = evecs(:,idx);
-mps = state_to_mps(psi0, n, pdim);
+%mps = state_to_mps(psi0, n, pdim);
+A = ones(1,1,2);
+ms = cell(1,n);
+for ii=1:n
+ms{ii} = Tensor(A);
+end
+mps = MPS(ms);
 
 % Do the time evolution
 [tvec, mps_out, ~, exp_out] = tdvp2(mpo, mps, dt, tfinal, svdtol, debug, [], {mpo_x});
