@@ -1,4 +1,4 @@
-function [tvec, mps_out, eout] = tdvp_gse(mpo, mpo_exp, kdim, mps, dt, tfinal, eps, debug, ef)
+function [tvec, mps_out, eout, exp_out] = tdvp_gse(mpo, mpo_exp, kdim, mps, dt, tfinal, eps, debug, ef, exp_ops)
 
 epsk = eps(1);
 epsm = eps(2);
@@ -9,6 +9,10 @@ if nargin < 8
     debug = false;
 end
 
+if nargin < 10
+    exp_ops = {};
+end
+
 TOL = 1e-12;
 
 numt = floor(tfinal/dt + 1);
@@ -16,6 +20,7 @@ tvec = zeros(1,numt);
 mps_out = cell(1, numt);
 mps_exp = cell(1, kdim);
 eout = zeros(1,numt);
+exp_out = zeros(size(exp_ops,2), numt);
 
 n = mps.num_sites();
 
@@ -42,6 +47,10 @@ end
 % Compute the initial energy
 mpo_ms = apply_mpo(mpo, ms);
 eout(1) = ms.inner(mpo_ms)/ms.inner(ms);
+for exp_idx=1:size(exp_ops,2)
+    mpo_ms = apply_mpo(exp_ops{exp_idx}, ms);
+    exp_out(exp_idx, 1) = ms.inner(mpo_ms)/ms.inner(ms);
+end
 
 % If we received a final energy, track the sign of the delta
 % so we know when to stop
@@ -129,7 +138,7 @@ while abs(t) < abs(tfinal)
     ms.validate();
     
     % Perform a single TDVP pass
-    [~, tdvp_mps_out, tdvp_eout] = tdvp(mpo, ms, dt, dt, eps_tdvp, false);
+    [~, tdvp_mps_out, tdvp_eout, tdvp_exp_out] = tdvp(mpo, ms, dt, dt, eps_tdvp, false, [], exp_ops);
     ms = tdvp_mps_out{end};
     
     % Make sure we only did one iteration of TDVP
@@ -146,6 +155,7 @@ while abs(t) < abs(tfinal)
     mps_out{itidx} = MPS(ms.tensors);
     
     eout(itidx) = tdvp_eout(end);
+    exp_out(:,itidx) = tdvp_exp_out(:,end);
     
     if de ~= 0
         if de ~= sign(eout(itidx) - ef)
@@ -158,7 +168,7 @@ while abs(t) < abs(tfinal)
     
     if debug
         if mod(itidx-1,10) == 0
-            disp(['t = ', num2str(t)]);
+            disp(['t = ', num2str(t), ', max rank: ', num2str(max(ms.rank()))]);
         end
     end
 end

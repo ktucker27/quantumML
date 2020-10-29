@@ -109,10 +109,11 @@ kdim = 3;
 eps_vec = [1e-6,1e-6,0,1e-10];
 
 % Build the MPO
-[~, ~, sz, ~, ~] = local_ops(pdim);
+[~, ~, sz, sx, ~] = local_ops(pdim);
 ops = {chi*sz,sz};
 lops = {(1/4)*eye(pdim)};
 [mpo,~] = build_long_range_mpo(ops,pdim,n,rmult,rpow,N,lops);
+mpo_x = build_mpo({sx},{},pdim,n);
 
 % Build the expansion MPO
 ops_exp = {-1i*dt*chi*sz,sz};
@@ -139,11 +140,17 @@ H2 = csz*csz;
 [evecs, evals] = eig(csx);
 [~,idx] = max(diag(evals));
 psi0 = evecs(:,idx);
-mps = state_to_mps(psi0, n, pdim);
+%mps = state_to_mps(psi0, n, pdim);
+A = ones(1,1,2);
+ms = cell(1,n);
+for ii=1:n
+ms{ii} = Tensor(A);
+end
+mps = MPS(ms);
 mps.right_normalize(eps_vec(2));
 
 % Do the time evolution
-[tvec, mps_out] = tdvp_gse(mpo, mpo_exp, kdim, mps, dt, tfinal, eps_vec, debug);
+[tvec, mps_out, ~, exp_out] = tdvp_gse(mpo, mpo_exp, kdim, mps, dt, tfinal, eps_vec, debug, [], {mpo_x});
 
 % Compare evolved state with the exact state
 evec = zeros(1,size(tvec,2));
@@ -164,6 +171,13 @@ end
 if max(evec) > tol
     disp('FAIL: TDVP state differs from analytical solution');
     pass = 0;
+end
+
+% Compare S_x value to expected
+ex = (n/2)*cos(tvec).^(n-1);
+xerr = max(abs(ex - exp_out));
+if xerr > tol
+    disp(['FAIL: Expected S_x value differs from exptected, error: ', num2str(xerr)]);
 end
 
 end
