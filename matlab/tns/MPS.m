@@ -127,6 +127,13 @@ classdef MPS < handle
         function n = num_sites(obj)
             n = size(obj.tensors,2);
         end
+        function r = rank(obj)
+            n = obj.num_sites();
+            r = zeros(1,n-1);
+            for ii=1:n-1
+                r(ii) = obj.tensors{ii}.dim(2);
+            end
+        end
         function psi = state_vector(obj)
             pdim = obj.pdim();
             
@@ -196,7 +203,7 @@ classdef MPS < handle
                 tol = 0;
             end
             
-            for ii=1:obj.num_sites()-1
+            for ii=1:obj.num_sites()
                 mdims = obj.tensors{ii}.dims();
                 M = obj.tensors{ii}.group({[1,3],2});
                 if tol > 0
@@ -207,8 +214,10 @@ classdef MPS < handle
                 obj.tensors{ii} = TU.split({[1,3;mdims([1,3])],2});
                 
                 % Update the next tensor
-                next_m = TS.contract(TV.conjugate(), [2,2]);
-                obj.tensors{ii+1} = next_m.contract(obj.tensors{ii+1},[2,1]);
+                if ii < obj.num_sites()
+                    next_m = TS.contract(TV.conjugate(), [2,2]);
+                    obj.tensors{ii+1} = next_m.contract(obj.tensors{ii+1},[2,1]);
+                end
             end
         end
         function right_normalize(obj, tol)
@@ -216,7 +225,7 @@ classdef MPS < handle
                 tol = 0;
             end
             
-            for ii=obj.num_sites():-1:2
+            for ii=obj.num_sites():-1:1
                 mdims = obj.tensors{ii}.dims();
                 M = obj.tensors{ii}.group({1,[2,3]});
                 if tol > 0
@@ -227,9 +236,11 @@ classdef MPS < handle
                 obj.tensors{ii} = TV.conjugate().split({[2,3;mdims([2,3])],1});
                 
                 % Update the next tensor
-                next_m = TU.contract(TS, [2,1]);
-                next_m = obj.tensors{ii-1}.contract(next_m,[2,1]);
-                obj.tensors{ii-1} = next_m.split({1,3,2});
+                if ii > 1
+                    next_m = TU.contract(TS, [2,1]);
+                    next_m = obj.tensors{ii-1}.contract(next_m,[2,1]);
+                    obj.tensors{ii-1} = next_m.split({1,3,2});
+                end
             end
         end
     end

@@ -179,7 +179,14 @@ if mps.is_left_normal(tol)
 end
 
 psi2 = mps.state_vector();
-if max(abs(psi - psi2)) > tol
+phaser = psi(1,1)/psi2(1,1);
+if abs(abs(phaser) - 1) > tol
+    disp(['FAIL: Found phaser without unit modulus after right normalize, error: ', num2str(abs(abs(phaser) - 1))]);
+    pass = 0;
+    return
+end
+
+if max(abs(psi - phaser*psi2)) > tol
     disp('FAIL: Right normalized MPS did not preserve state vector');
     pass = 0;
 end
@@ -197,8 +204,15 @@ if mps.is_right_normal(tol)
     pass = 0;
 end
 
+phaser = psi(1,1)/psi2(1,1);
+if abs(abs(phaser) - 1) > tol
+    disp(['FAIL: Found phaser without unit modulus after left normalize, error: ', num2str(abs(abs(phaser) - 1))]);
+    pass = 0;
+    return
+end
+
 psi2 = mps.state_vector();
-if max(abs(psi - psi2)) > tol
+if max(abs(psi - phaser*psi2)) > tol
     disp('FAIL: Left normalized MPS did not preserve state vector');
     pass = 0;
 end
