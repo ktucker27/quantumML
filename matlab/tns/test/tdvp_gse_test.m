@@ -37,7 +37,7 @@ h = 1;
 dt = 0.01;
 tfinal = 1;
 kdim = 3;
-eps_vec = [1e-6,1e-8,0,1e-10];
+eps_vec = [1e-6,1e-8,1e-8,1e-10];
 
 [~, ~, sz, sx, ~] = local_ops(pdim);
 one_site = {-h*sz};
@@ -95,7 +95,7 @@ pass = 1;
 
 debug = true;
 
-tol = 1e-4;
+tol = 4e-4;
 
 n = 10;
 pdim = 2;
@@ -106,7 +106,7 @@ N = 3;
 dt = 0.01;
 tfinal = 1;
 kdim = 3;
-eps_vec = [1e-6,1e-6,0,1e-10];
+eps_vec = [1e-6,1e-6,1e-6,1e-6];
 
 % Build the MPO
 [~, ~, sz, sx, ~] = local_ops(pdim);
@@ -176,7 +176,7 @@ end
 % Compare S_x value to expected
 ex = (n/2)*cos(tvec).^(n-1);
 xerr = max(abs(ex - exp_out));
-if xerr > tol
+if xerr > 1e-2
     disp(['FAIL: Expected S_x value differs from exptected, error: ', num2str(xerr)]);
 end
 
@@ -196,7 +196,7 @@ rmult = 1;
 N = 2;
 pdim = 2;
 kdim = 3;
-eps_vec = [1e-6,1e-6,0,1e-6];
+eps_vec = [1e-6,1e-6,1e-6,1e-6];
 [~, ~, sz, sx, sy] = local_ops(pdim);
 
 tfinal = -1i;
@@ -218,7 +218,7 @@ ops = {-0.5*sx,sx;-0.5*sy,sy;sz,sz};
 mpo = build_purification_mpo(ops,pdim,n,rmult,rpow,N);
 
 % Build the expansion MPO
-ops_exp = {1i*dt*0.5*sx,sx;1i*dt*0.5*sy,sy;-1i*dt*sz,sz};
+ops_exp = {1i*abs(dt)*0.5*sx,sx;1i*abs(dt)*0.5*sy,sy;-1i*abs(dt)*sz,sz};
 lops_exp = {(1/n)*eye(pdim)};
 [mpo_exp] = build_purification_mpo(ops_exp,pdim,n,rmult,rpow,N,lops_exp);
 

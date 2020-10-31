@@ -108,7 +108,8 @@ while abs(t) < abs(tfinal)
         
         % Evolve according to H
         nv = norm(v);
-        v = lanczos_expm(-lanczos_mult*Hmat.A*dt/2,v/nv,max([min(floor(size(v,1)*0.05),10),2]),lanczos_fun)*nv;
+        lsteps = min([max([floor(size(v,1)*0.05),2]), size(v,1)-1, 10]);
+        v = lanczos_expm(-lanczos_mult*Hmat.A*dt/2,v/nv,lsteps,lanczos_fun)*nv;
         
         M = Tensor(v,1);
         M2 = M.split({[1,2,3;mdims]});
@@ -183,7 +184,8 @@ while abs(t) < abs(tfinal)
             
             % Evolve according to K
             nv = norm(v);
-            v = lanczos_expm(lanczos_mult*K.A*dt/2,v/nv,max([min(floor(size(v,1)*0.05),10),2]),lanczos_fun)*nv;
+            lsteps = min([max([floor(size(v,1)*0.05),2]), size(v,1)-1, 10]);
+            v = lanczos_expm(lanczos_mult*K.A*dt/2,v/nv,lsteps,lanczos_fun)*nv;
             
             C = Tensor(v,1);
             C = C.split({[1,2;mdims]});

@@ -84,7 +84,7 @@ pass = 1;
 
 debug = true;
 
-tol = 3e-4;
+tol = 4e-4;
 
 n = 10;
 pdim = 2;
