@@ -54,7 +54,9 @@ for ii=1:n
 end
 mps = MPS(ms);
 
+tic()
 [tvec, mps_out] = tdvp2(mpo, mps, dt, tfinal, svdtol, debug);
+disp(['Run time (s): ', num2str(toc())]);
 
 evec = zeros(1,size(tvec,2));
 dtmat = expm(-1i*H*dt);
@@ -132,7 +134,9 @@ end
 mps = MPS(ms);
 
 % Do the time evolution
+tic()
 [tvec, mps_out, ~, exp_out] = tdvp2(mpo, mps, dt, tfinal, svdtol, debug, [], {mpo_x});
+disp(['Run time (s): ', num2str(toc())]);
 
 % Compare evolved state with the exact state
 evec = zeros(1,size(tvec,2));

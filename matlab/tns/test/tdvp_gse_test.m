@@ -65,7 +65,9 @@ for ii=1:n
 end
 mps = MPS(ms);
 
+tic()
 [tvec, mps_out] = tdvp_gse(mpo, mpo_exp, kdim, mps, dt, tfinal, eps_vec, debug);
+disp(['Run time (s): ', num2str(toc())]);
 
 evec = zeros(1,size(tvec,2));
 dtmat = expm(-1i*H*dt);
@@ -150,7 +152,9 @@ mps = MPS(ms);
 mps.right_normalize(eps_vec(2));
 
 % Do the time evolution
+tic()
 [tvec, mps_out, ~, exp_out] = tdvp_gse(mpo, mpo_exp, kdim, mps, dt, tfinal, eps_vec, debug, [], {mpo_x});
+disp(['Run time (s): ', num2str(toc())]);
 
 % Compare evolved state with the exact state
 evec = zeros(1,size(tvec,2));
@@ -224,7 +228,9 @@ lops_exp = {(1/n)*eye(pdim)};
 
 % Perform the imaginary time evolution
 mps0 = build_init_purification(n,pdim,1);
+tic()
 [tvec, ~, eout] = tdvp_gse(mpo, mpo_exp, kdim, mps0, dt, tfinal, eps_vec, debug);
+disp(['Run time (s): ', num2str(toc())]);
 
 % Get the exact energy expectations
 eout0 = zeros(size(tvec));

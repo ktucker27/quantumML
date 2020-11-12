@@ -52,7 +52,9 @@ end
 psi0 = [1;zeros(pdim^n-1,1)];
 mps = state_to_mps(psi0, n, pdim);
 
+tic()
 [tvec, mps_out] = tdvp(mpo, mps, dt, tfinal, 0, debug);
+disp(['Run time (s): ', num2str(toc())]);
 
 evec = zeros(1,size(tvec,2));
 dtmat = expm(-1i*H*dt);
@@ -123,7 +125,9 @@ psi0 = evecs(:,idx);
 mps = state_to_mps(psi0, n, pdim);
 
 % Do the time evolution
+tic()
 [tvec, mps_out, ~, exp_out] = tdvp(mpo, mps, dt, tfinal, 0, debug, [], {mpo_x});
+disp(['Run time (s): ', num2str(toc())]);
 
 % Compare evolved state with the exact state
 evec = zeros(1,size(tvec,2));
@@ -189,7 +193,9 @@ mpo = build_purification_mpo(ops,pdim,n,rmult,rpow,N);
 tfinal = -1i;
 dt = -0.01*1i;
 mps0 = build_init_purification(n,pdim,pdim^n);
+tic()
 [tvec, ~, eout] = tdvp(mpo, mps0, dt, tfinal, 0, debug);
+disp(['Run time (s): ', num2str(toc())]);
 
 % Get the exact energy expectations
 eout0 = zeros(size(tvec));
