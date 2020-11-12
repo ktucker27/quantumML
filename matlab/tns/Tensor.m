@@ -2,6 +2,7 @@ classdef Tensor < handle
     properties
         A
         tensor_rank
+        dimvec
     end
     methods
         function obj = Tensor(T, rank)
@@ -12,6 +13,8 @@ classdef Tensor < handle
                 else
                     obj.tensor_rank = obj.rank_from_matrix();
                 end
+                
+                obj.dimvec = [];
             end
         end
         function set(obj, idx, val)
@@ -327,6 +330,11 @@ classdef Tensor < handle
                 return
             end
             
+            if size(obj.dimvec,1) > 0
+                d = obj.dimvec;
+                return
+            end
+            
             d = ones(1,obj.tensor_rank);
             for ii=1:ndims(obj.A)
                 if ii <= size(d,2)
@@ -337,6 +345,7 @@ classdef Tensor < handle
                     end
                 end
             end
+            obj.dimvec = d;
         end
         function d = dim(obj, idx)
             dv = obj.dims();
