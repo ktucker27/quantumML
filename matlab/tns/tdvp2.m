@@ -79,9 +79,7 @@ while abs(t) < abs(tfinal)
     for ii=startidx:idxinc:endidx
         nextidx = ii + idxinc;
         
-        % Build the two site H matrix
-        
-        % Contract the MPO state with R
+        % Get the R tensor
         if idxinc > 0
             ridx = ii + 1;
         else
@@ -91,11 +89,8 @@ while abs(t) < abs(tfinal)
         if ridx < n
             TR = TR.end_squeeze(3);
         end
-        H = mpo.tensors{ridx}.contract(TR, [2,2]);
-        H = mpo.tensors{ridx-1}.contract(H, [2,1]);
-        H = H.group({1,[2,4],[3,5],6,7});
         
-        % Contract the result with L
+        % Get the L tensor
         if idxinc > 0
             lidx = ii;
         else
@@ -105,26 +100,24 @@ while abs(t) < abs(tfinal)
         if lidx > 1
             TL = TL.end_squeeze(3);
         end
-        H = H.contract(TL, [1,2]);
         
-        % Group the tensor into a matrix
-        Hmat = H.group({[6,4,2],[5,3,1]});
-        
-        % Contract and vectorize the current tensors
+        % Contract the current tensors
         v = ms.tensors{ridx-1}.contract(ms.tensors{ridx},[2,1]);
-        vdims = v.dim([1,3,2,4]);
-        v = v.group({[1,3,2,4]}).A;
+        v = v.split({1,3,2,4});
+        vdims = v.dims();
         
         % Evolve according to H
-        nv = norm(v);
-        lsteps = min([max([floor(size(v,1)*0.05),2]), size(v,1)-1, 10]);
-        v = lanczos_expm(-lanczos_mult*Hmat.A*dt/2,v/nv,lsteps,lanczos_fun)*nv;
+        nv = v.norm();
+        v.mult_eq(1/nv);
+        num_elms = prod(v.dims());
+        lsteps = min([max([floor(num_elms*0.05),2]), num_elms-1, 10]);
+        v = lanczos_expm_mps(TL.mult(-lanczos_mult*dt/2), TR, {mpo.tensors{ridx-1}, mpo.tensors{ridx}}, v, lsteps, lanczos_fun)*nv;
         
         M = Tensor(v);
         
         % Re-arrange the two site tensor as a matrix and perform the SVD
-        M2 = M.split({[1,3,2,4;vdims]});
-        M2 = M2.group({[1,2],[3,4]});
+        M2 = M.split({[1,2,3,4;vdims]});
+        M2 = M2.group({[1,3],[2,4]});
         [TU, TS, TV] = M2.svd_trunc(tol);
         
         % Update the tensors
@@ -186,21 +179,13 @@ while abs(t) < abs(tfinal)
             % Evolve the second site backwards in time and contract it into
             % the next two site block
             
-            % Build the one site H matrix
-            H = mpo.tensors{nextidx}.contract(TR, [2,2]);
-            H = H.contract(TL, [1,2]);
-            
-            % Group the tensor into a matrix
-            mdims = H.dim([5,3,1]);
-            Hmat = H.group({[6,4,2],[5,3,1]});
-            
-            % Vectorize the next tensor
-            v = C.group({[1,2,3]}).A;
-            
             % Evolve according to H
-            nv = norm(v);
-            lsteps = min([max([floor(size(v,1)*0.05),2]), size(v,1)-1, 10]);
-            v = lanczos_expm(lanczos_mult*Hmat.A*dt/2,v/nv,lsteps,lanczos_fun)*nv;
+            mdims = C.dims();
+            nv = C.norm();
+            C.mult_eq(1/nv);
+            num_elms = prod(C.dims());
+            lsteps = min([max([floor(num_elms*0.05),2]), num_elms-1, 10]);
+            v = lanczos_expm_mps(TL.mult(lanczos_mult*dt/2), TR, {mpo.tensors{nextidx}}, C, lsteps, lanczos_fun)*nv;
             
             C = Tensor(v);
             next_m = C.split({[1,2,3;mdims]});
