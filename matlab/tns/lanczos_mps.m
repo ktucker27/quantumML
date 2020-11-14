@@ -4,6 +4,11 @@ function [T, Q, alphas, betas] = lanczos_mps(L, R, ops, b, numsteps)
 %
 % b is the tensor being operated on with the following indices:
 %
+% Zero site:
+%     ___
+% 1__|   |__2
+%    |___|
+%
 % One site:
 %     ___
 % 1__|   |__2
@@ -41,18 +46,21 @@ for i=1:numsteps+1
     % Perform the matrix vector multiplication with an efficient bubbling
     % z = A*Q(:,i); (Regular Lanczos analog)
     b = L.contract(b, [1,1]); % O(m1^2 m2 k d^N)
-    b = b.contract(ops{1}, [1,1;4,3]); % O(m1 m2 k^2 d^(N+1))
     
-    if num_sites == 1
+    if num_sites == 0
+        b = b.contract(R, [3,1;1,2]); % O(m1 m2^2 k)
+    elseif num_sites == 1
+        b = b.contract(ops{1}, [1,1;4,3]); % O(m1 m2 k^2 d^2)
         b = b.contract(R, [2,1;3,2]); % O(m1 m2^2 k d)
     else
+        b = b.contract(ops{1}, [1,1;4,3]); % O(m1 m2 k^2 d^3)
         b = b.contract(ops{2}, [4,1;3,3]); % O(m1 m2 k^2 d^3)
         b = b.contract(R, [2,1;4,2]); % O(m1 m2^2 k d^2)
     end
     
     if num_sites == 1
         b = b.split({1,3,2});
-    else
+    elseif num_sites == 2
         b = b.split({1,3,4,2});
     end
     

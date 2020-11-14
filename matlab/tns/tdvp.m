@@ -83,33 +83,26 @@ while abs(t) < abs(tfinal)
     for ii=startidx:idxinc:endidx
         nextidx = ii + idxinc;
         
-        % Build the H matrix
-        
-        % Contract the MPO state with R
+        % Get the R tensor
         TR = R{ii};
         if ii < n
             TR = TR.end_squeeze(3);
         end
-        H = mpo.tensors{ii}.contract(TR, [2,2]);
         
-        % Contract the result with L
+        % Get the L tensor
         TL = L{ii};
         if ii > 1
             TL = TL.end_squeeze(3);
         end
-        H = H.contract(TL, [1,2]);
-        
-        % Group the tensor into a matrix
-        mdims = H.dim([5,3,1]);
-        Hmat = H.group({[6,4,2],[5,3,1]});
-        
-        % Vectorize the current tensor
-        v = ms.tensors{ii}.group({[1,2,3]}).A;
         
         % Evolve according to H
-        nv = norm(v);
-        lsteps = min([max([floor(size(v,1)*0.05),2]), size(v,1)-1, 10]);
-        v = lanczos_expm(-lanczos_mult*Hmat.A*dt/2,v/nv,lsteps,lanczos_fun)*nv;
+        v = Tensor(ms.tensors{ii}.A, ms.tensors{ii}.rank());
+        mdims = v.dims();
+        nv = v.norm();
+        v.mult_eq(1/nv);
+        num_elms = prod(mdims);
+        lsteps = min([max([floor(num_elms*0.05),2]), num_elms-1, 10]);
+        v = lanczos_expm_mps(TL.mult(-lanczos_mult*dt/2), TR, {mpo.tensors{ii}}, v, lsteps, lanczos_fun)*nv;
         
         M = Tensor(v,1);
         M2 = M.split({[1,2,3;mdims]});
@@ -172,20 +165,16 @@ while abs(t) < abs(tfinal)
         end
         
         if nextidx >= 1 && nextidx <= n
-            % Build the K matrix
-            K = TL.contract(TR, [2,2]);
-            
-            % Group the tensor into a matrix
-            mdims = K.dim([1,3]);
-            K = K.group({[2,4],[1,3]});
-            
-            % Vectorize the next tensor
-            v = C.group({[1,2]}).A;
+            % Evolve the C tensor backwards in time and contract it into
+            % the next two site block
             
             % Evolve according to K
-            nv = norm(v);
-            lsteps = min([max([floor(size(v,1)*0.05),2]), size(v,1)-1, 10]);
-            v = lanczos_expm(lanczos_mult*K.A*dt/2,v/nv,lsteps,lanczos_fun)*nv;
+            mdims = C.dims();
+            nv = C.norm();
+            C.mult_eq(1/nv);
+            num_elms = prod(mdims);
+            lsteps = min([max([floor(num_elms*0.05),2]), num_elms-1, 10]);
+            v = lanczos_expm_mps(TL.mult(lanczos_mult*dt/2), TR, {}, C, lsteps, lanczos_fun)*nv;
             
             C = Tensor(v,1);
             C = C.split({[1,2;mdims]});

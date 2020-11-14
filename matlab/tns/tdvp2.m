@@ -109,7 +109,7 @@ while abs(t) < abs(tfinal)
         % Evolve according to H
         nv = v.norm();
         v.mult_eq(1/nv);
-        num_elms = prod(v.dims());
+        num_elms = prod(vdims);
         lsteps = min([max([floor(num_elms*0.05),2]), num_elms-1, 10]);
         v = lanczos_expm_mps(TL.mult(-lanczos_mult*dt/2), TR, {mpo.tensors{ridx-1}, mpo.tensors{ridx}}, v, lsteps, lanczos_fun)*nv;
         
@@ -183,7 +183,7 @@ while abs(t) < abs(tfinal)
             mdims = C.dims();
             nv = C.norm();
             C.mult_eq(1/nv);
-            num_elms = prod(C.dims());
+            num_elms = prod(mdims);
             lsteps = min([max([floor(num_elms*0.05),2]), num_elms-1, 10]);
             v = lanczos_expm_mps(TL.mult(lanczos_mult*dt/2), TR, {mpo.tensors{nextidx}}, C, lsteps, lanczos_fun)*nv;
             
