@@ -14,7 +14,14 @@ classdef IndexIter < handle
         function idx = endidx(obj)
             idx = zeros(size(obj.dim));
         end
+        function val = equals(obj, rhs)
+            val = isequal(obj.curridx, rhs.curridx);
+        end
         function next(obj)
+            if obj.end()
+                return
+            end
+            
             for ii=1:size(obj.curridx,2)
                 obj.curridx(ii) = obj.curridx(ii) + 1;
                 if obj.curridx(ii) <= obj.dim(ii)
@@ -29,6 +36,10 @@ classdef IndexIter < handle
             end
         end
         function reverse_next(obj)
+            if obj.end()
+                return
+            end
+            
             for ii=size(obj.curridx,2):-1:1
                 obj.curridx(ii) = obj.curridx(ii) + 1;
                 if obj.curridx(ii) <= obj.dim(ii)
