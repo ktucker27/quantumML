@@ -34,8 +34,9 @@ if max(max(abs(H - H2))) > tol
     pass = 0;
 end
 
-[evecs, ~] = eig(H);
-psi0 = evecs(:,1);
+[evecs, evals] = eig(H);
+[e0, min_idx] = min(diag(evals));
+psi0 = evecs(:,min_idx);
 psi = rand(pdim^n,1) + 1i*rand(pdim^n,1);
 psi = psi/norm(psi);
 
@@ -56,6 +57,12 @@ end
 
 if abs(mps_out.inner(mps_out) - 1) > tol
     disp('FAIL: Output eigenvector is not norm 1');
+    pass = 0;
+end
+
+e = mps_out.inner(apply_mpo(mpo, mps_out));
+if abs(e - e0) > tol
+    disp(['FAIL: Output eigenvalue does not match ground state, error: ', num2str(abs(e - e0))]);
     pass = 0;
 end
 
