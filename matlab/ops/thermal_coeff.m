@@ -1,4 +1,8 @@
-function V = thermal_coeff(n, d, rpow)
+function V = thermal_coeff(n, d, rpow, phi_vec)
+
+if nargin < 4
+    phi_vec = zeros(1,3);
+end
 
 V = zeros(n^d,n^d);
 
@@ -19,7 +23,7 @@ while ~idx_i.end()
         diff = idx_i.curridx - idx_j.curridx;
         dist = norm(diff,2);
         diff3d = [diff, zeros(1, 3 - d)];
-        cosphi = diff3d(3)/dist; % Assumes magnetic field in the z-direction
+        cosphi = phi_vec*(diff3d/dist)';
         
         V(ii,jj) = (1 - 3*cosphi^2)/dist^rpow;
         
