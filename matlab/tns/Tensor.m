@@ -172,7 +172,7 @@ classdef Tensor < handle
             TS = Tensor(s, 2);
             TV = Tensor(v, 2);
         end
-        function [TU,TS,TV] = svd_trunc(obj, tol)
+        function [TU,TS,TV] = svd_trunc(obj, tol, maxrank)
             if obj.rank() ~= 2
                 error('SVD can only be performed on a rank 2 tensor');
             end
@@ -180,6 +180,10 @@ classdef Tensor < handle
             [u,s,v] = svd(obj.A, 'econ');
             
             end_idx = get_trunc_idx(diag(s), tol);
+            
+            if nargin > 2 && maxrank > 0
+                end_idx = min([end_idx, maxrank]);
+            end
             
             TU = Tensor(u(:,1:end_idx), 2);
             TS = Tensor(s(1:end_idx,1:end_idx), 2);

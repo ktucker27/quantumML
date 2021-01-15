@@ -8,6 +8,13 @@ if nargin < 8
     exp_ops = {};
 end
 
+svdtol = tol(1);
+if numel(tol) > 1
+    maxrank = tol(2);
+else
+    maxrank = 0;
+end
+
 EPS = 1e-12;
 
 numt = floor(tfinal/dt + 1);
@@ -118,7 +125,7 @@ while abs(t) < abs(tfinal)
         % Re-arrange the two site tensor as a matrix and perform the SVD
         M2 = M.split({[1,2,3,4;vdims]});
         M2 = M2.group({[1,3],[2,4]});
-        [TU, TS, TV] = M2.svd_trunc(tol);
+        [TU, TS, TV] = M2.svd_trunc(svdtol, maxrank);
         
         % Update the tensors
         if idxinc > 0
