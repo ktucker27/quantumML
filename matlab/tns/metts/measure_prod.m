@@ -1,13 +1,12 @@
-function mps_out = measure_prod(mps, op)
-% measure_prod: Perform a measurement of op at each site of mps and return
-% the state of the system after the measurements as a rank one MPS
+function mps_out = measure_prod(mps, site_evecs)
+% measure_prod: Perform a measurement w.r.t. the basis given by site_evecs
+% at each site of mps and return the state of the system after the 
+% measurements as a rank one MPS
 
 tol = 1e-12;
 
-[evecs, ~] = eig(op);
-
 n = mps.num_sites();
-pdim = size(op, 1);
+pdim = size(site_evecs{1}, 1); % Assumes constant pdim
 
 % Iterate over the sites, performing the measurement for the operator at
 % that site
@@ -29,7 +28,7 @@ for ii=1:n
     pdf = zeros(1,pdim);
     cdf = zeros(1,pdim);
     for jj=1:pdim
-        T = Tensor(evecs(:,jj)*evecs(:,jj)');
+        T = Tensor(site_evecs{ii}(:,jj)*site_evecs{ii}(:,jj)');
         mps.set_tensor(ii,mps.tensors{ii}.contract(T,[3,2]));
         prob = mps2.inner(mps);
         if jj == 1
@@ -57,10 +56,10 @@ for ii=1:n
     end
     
     % Create the tensor for the new product state
-    ms_out{ii} = Tensor(reshape(evecs(:,idx), 1, 1, []));
+    ms_out{ii} = Tensor(reshape(site_evecs{ii}(:,idx), 1, 1, []));
     
     % Project the MPS based on the outcome of the measurement
-    T = Tensor(evecs(:,idx)*evecs(:,idx)');
+    T = Tensor(site_evecs{ii}(:,idx)*site_evecs{ii}(:,idx)');
     T2 = mps.tensors{ii}.contract(T,[3,2]);
     T2.mult_eq(pdf(idx)^(-1/2));
     mps.set_tensor(ii,T2);
