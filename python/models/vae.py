@@ -101,6 +101,18 @@ class VAE(snt.Module):
             'loss': loss
         }
 
+    def sample(self, batch_size):
+        # Sample from the prior distribution on the latent space and run through the decoder
+        latent_dim = self.decoder.hidden[0].input_size
+        z = tf.random.normal([batch_size, latent_dim], mean=0.0, stddev=1.0, dtype=tf.dtypes.float32)
+        output = tf.nn.sigmoid(self.decoder(z))
+        
+        # Sample from the binary distributions coming out of the decoder to get spins
+        eps = tf.random.uniform(output.shape, minval=0, maxval=1, dtype=tf.dtypes.float32)
+        meas_int = tf.cast(tf.math.greater_equal(output, eps), tf.int32)
+
+        return meas_int
+
 class CatEncoder(snt.Module):
     def __init__(self, hdims, latent_dim, depth, name=None):
         super(CatEncoder, self).__init__(name)
@@ -196,3 +208,109 @@ class CatVAE(snt.Module):
             'x_recon_loss': x_recon_loss,
             'loss': loss
         }
+
+    def sample(self, batch_size):
+        # Sample in the CatVAE latent space using the prior and decode to get distributions by site
+        latent_dim = self.encoder.latent_dim
+        z = tf.random.normal([batch_size, latent_dim], mean=0.0, stddev=1.0, dtype=tf.dtypes.float32)
+        output = self.decoder(z)
+        vdim = output['x_recon'].shape[1]
+        
+        # Sample from the resulting distributions
+        probs = tf.reshape(output['x_recon'], [-1, output['x_recon'].shape[-1]])
+        samples = tf.reshape(tf.random.categorical(tf.math.log(probs), 1), [batch_size, vdim])
+
+        return samples
+
+class VQEncoder(snt.Module):
+    def __init__(self, hdims, latent_dim, embedding_dim, name=None):
+        super(VQEncoder, self).__init__(name)
+
+        self.latent_dim = latent_dim
+        self.embedding_dim = embedding_dim
+        
+        self.hidden = []
+        for idx, hdim in enumerate(hdims):
+            layer_name = 'hidden{}'.format(idx)
+            self.hidden.append(snt.Linear(hdim, name=layer_name))
+        
+        self.z_e = snt.Linear(latent_dim*embedding_dim, name=layer_name)
+        
+    def __call__(self, x):
+        
+        # Run the input through the encoder network
+        for hidden_layer in self.hidden:
+            x = tf.nn.relu(hidden_layer(x))
+        
+        out_z_e = tf.reshape(self.z_e(x),[-1, self.latent_dim, self.embedding_dim])
+        
+        return {
+            'z_e': out_z_e
+        }
+
+class VQDecoder(snt.Module):
+    def __init__(self, hdims, vdim, name=None):
+        super(VQDecoder, self).__init__(name)
+                
+        self.hidden = []
+        for idx, hdim in enumerate(hdims):
+            layer_name = 'hidden{}'.format(idx)
+            self.hidden.append(snt.Linear(hdim, name=layer_name))
+            
+        self.visible = snt.Linear(vdim, 'visible')
+        
+    def __call__(self, x, apply_sigmoid=False):
+        
+        latent_dim = x.shape[1]
+        embedding_dim = x.shape[2]
+        x = tf.reshape(x, [-1, latent_dim*embedding_dim])
+        
+        for hidden_layer in self.hidden:
+            x = tf.nn.relu(hidden_layer(x))
+        
+        if apply_sigmoid:
+            output = tf.nn.sigmoid(self.visible(x))
+        else:
+            output = self.visible(x)
+        
+        return output
+
+class VQVAE(snt.Module):
+    def __init__(self, encoder, quantizer, decoder, name=None):
+        super(VQVAE, self).__init__(name)
+        
+        self.encoder = encoder
+        self.quantizer = quantizer
+        self.decoder = decoder
+    
+    def __call__(self, x, is_training):
+        # Run the encoder and decoder
+        encoder_output = self.encoder(x)
+        quant_output = self.quantizer(encoder_output['z_e'], is_training)
+        x_recon = self.decoder(quant_output['quantize'], False)
+        
+        # Compute the loss function
+        cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(logits=x_recon, labels=x)
+        log_pxz = -tf.reduce_sum(cross_ent, axis=1)
+        x_recon_loss = -tf.reduce_mean(log_pxz)
+        loss = x_recon_loss + quant_output['loss']
+        
+        return {
+            'x_recon': x_recon,
+            'x_recon_loss': x_recon_loss,
+            'loss': loss
+        }
+
+    def sample(self, prior, batch_size):
+        # Sample from the prior
+        samples = prior.sample(batch_size)
+
+        # Get the embedding vectors from the quantizer and run them through the decoder
+        embeddings = self.quantizer.quantize(samples.numpy())
+        output = self.decoder(embeddings, True)
+        
+        # Sample from the binary distributions coming out of the decoder to get spins
+        eps = tf.random.uniform(output.shape, minval=0, maxval=1, dtype=tf.dtypes.float32)
+        meas_int = tf.cast(tf.math.greater_equal(output, eps), tf.int32)
+
+        return meas_int
