@@ -82,7 +82,7 @@ class VAE(snt.Module):
         self.encoder = encoder
         self.decoder = decoder
                 
-    def __call__(self, x):
+    def __call__(self, x, beta=1):
         # Run the encoder and decoder
         encoder_output = self.encoder(x)
         x_recon = self.decoder(encoder_output['z'], False)
@@ -93,7 +93,7 @@ class VAE(snt.Module):
         log_pz = log_normal_pdf(encoder_output['z'], 0.0, 0.0)
         log_qzx = log_normal_pdf(encoder_output['z'], encoder_output['mean'], encoder_output['log_var'])
         x_recon_loss = -tf.reduce_mean(log_pxz)
-        loss = x_recon_loss - tf.reduce_mean(log_pz - log_qzx)
+        loss = x_recon_loss - beta*tf.reduce_mean(log_pz - log_qzx)
         
         return {
             'x_recon': x_recon,
