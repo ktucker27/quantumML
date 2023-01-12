@@ -76,17 +76,21 @@ class EulerMultiDModel(tf.Module):
     self.d = d
     self.m = m
   
-  @tf.function
-  def __call__(self, x0, num_traj=None):
+  #@tf.function
+  def __call__(self, x0, num_traj=None, wvec=None):
     if num_traj is None:
       num_traj = tf.shape(x0)[0]
-    self.wvec = tf.random.normal(stddev=math.sqrt(self.deltat), shape=[num_traj,self.m,1,self.tvec.shape[0]-1])
+
+    if wvec is not None:
+      self.wvec = wvec
+    else:
+      self.wvec = tf.random.normal(stddev=math.sqrt(self.deltat), shape=[num_traj,self.tvec.shape[0]-1,self.m,1])
 
     prevy = tf.ones(shape=[num_traj,self.d,1])*tf.reshape(x0,[-1,self.d,1])
     y = tf.reshape(prevy, [num_traj,self.d,1])
 
     for tidx, t in enumerate(self.tvec[:-1]):
-      curry = prevy + self.a(t,prevy,self.params)*self.deltat + tf.matmul(self.b(t,prevy,self.params),self.wvec[:,:,:,tidx])
+      curry = prevy + self.a(t,prevy,self.params)*self.deltat + tf.matmul(self.b(t,prevy,self.params),self.wvec[:,tidx,:,:])
       y = tf.concat([y, curry], axis=2)
       prevy = curry
 
@@ -116,9 +120,9 @@ def multiintj12(m,p,deltat,wvec):
   sumval = tf.zeros([num_traj,num_times-1,m,m])
   rhop = 0.0
   for ridx in range(p):
-    r = ridx + 1
-    sumval = sumval + float(1/r)*(tf.matmul(zeta[:,:,:,:,ridx], tf.transpose(math.sqrt(2)*gsi + eta[...,ridx], perm=[0,1,3,2])))
-    rhop = rhop + 1/float(r*r)
+    r = float(ridx + 1)
+    sumval = sumval + (1/r)*(tf.matmul(zeta[:,:,:,:,ridx], tf.transpose(math.sqrt(2)*gsi + eta[...,ridx], perm=[0,1,3,2])))
+    rhop = rhop + (1/(r*r))
 
   sumval = (sumval - tf.transpose(sumval, perm=[0,1,3,2]))
   rhop = (1/12.0) - rhop/(2*math.pi**2)
@@ -161,14 +165,18 @@ class MilsteinModel(tf.Module):
     self.p = p
   
   #@tf.function
-  def __call__(self, x0, num_traj=None):
+  def __call__(self, x0, num_traj=None, wvec=None):
     if num_traj is None:
       num_traj = tf.shape(x0)[0]
     
     num_times = self.tvec.shape[0]
-    self.wvec = tf.random.normal(stddev=math.sqrt(self.deltat), shape=[num_traj,num_times-1,self.m,1])
 
-    self.jmat = multiintj12(m, self.p, self.deltat, self.wvec) # [num_traj,num_times-1,m,m]
+    if wvec is not None:
+        self.wvec = wvec
+    else:
+        self.wvec = tf.random.normal(stddev=math.sqrt(self.deltat), shape=[num_traj,num_times-1,self.m,1])
+
+    self.jmat = multiintj12(self.m, self.p, self.deltat, self.wvec) # [num_traj,num_times-1,m,m]
     self.imat = 0.5*tf.eye(self.m, self.m, [num_traj,num_times-1])*(tf.matmul(self.wvec, tf.transpose(self.wvec, perm=[0,1,3,2])) - self.deltat) + self.jmat # [num_traj,num_times-1,m,m]
 
     prevy = tf.ones(shape=[num_traj,self.d,1])*tf.reshape(x0,[-1,self.d,1])
