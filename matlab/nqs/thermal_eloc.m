@@ -17,7 +17,7 @@ zzsum = 0;
 
 psi_sz = feval(wave, a, theta, sz);
 
-if abs(psi_sz) < 1e-10
+if abs(psi_sz)^2 < 1e-10
     eloc = 0;
     return;
 end
