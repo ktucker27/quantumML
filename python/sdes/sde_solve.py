@@ -54,6 +54,43 @@ def abs_err_loss(y_pred, y):
 def mean_abs_err_loss(y_pred, y):
   return tf.reduce_mean(tf.reduce_mean(tf.math.abs(y_pred - y), axis=0))
 
+def fit_model(x0, y, sde_mod, loss_func, batch_size, epochs=10, learning_rate=0.01):
+  num_traj = y.shape[0]
+
+  y0 = sde_mod(x0, num_traj)
+
+  x0vec = np.ones([y.shape[0],1])*x0
+
+  init_loss = loss_func(y0, y)
+  print('Init loss:', init_loss)
+
+  dataset = tf.data.Dataset.from_tensor_slices((tf.cast(x0vec, dtype=tf.float32), tf.cast(y, dtype=tf.float32)))
+  dataset = dataset.shuffle(buffer_size=x0vec.shape[0]).batch(batch_size)
+
+  losses = [init_loss]
+
+  for epoch in range(epochs):
+    for x_batch, y_batch in dataset:
+      # Evaluate the loss function
+      with tf.GradientTape() as tape:
+        batch_loss = loss_func(sde_mod(x_batch), y_batch)
+      
+      # Calculate the gradient and update
+      grads = tape.gradient(batch_loss, sde_mod.variables)
+      for g, v in zip(grads, sde_mod.variables):
+        if g is not None:
+          v.assign_sub(learning_rate*g)
+    
+    # Calculate the loss for this epoch
+    loss = loss_func(sde_mod(tf.cast(x0vec, dtype=tf.float32)), y)
+    losses.append(loss)
+
+    if epoch % 1 == 0:
+      print(f'Loss for epoch {epoch} = {loss.numpy():0.3f}')
+      print(sde_mod.variables)
+
+  return losses
+
 class EulerMultiDModel(tf.Module):
 
   def __init__(self, mint, maxt, deltat, a, b, d, m, num_params, params=None, fix_params=None):
