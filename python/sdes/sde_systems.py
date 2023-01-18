@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 
 def paulis():
-    return [ [[0.0, 1.0],[1.0, 0.0]], [[0.0, -1.0j],[1.0j, 0.0]], [[1.0, 0.0],[0.0, -1.0]] ]
+    return [ np.array([[0.0, 1.0],[1.0, 0.0]]), np.array([[0.0, -1.0j],[1.0j, 0.0]]), np.array([[1.0, 0.0],[0.0, -1.0]]) ]
 
 def kron(a,b):
     assert tf.rank(a) == 2
@@ -11,6 +11,21 @@ def kron(a,b):
     cp = tf.tensordot(a,b,axes=0)
     c = tf.transpose(cp, perm=[0,2,1,3])
     return tf.reshape(c, [a.shape[0]*b.shape[0], a.shape[1]*b.shape[1]])
+
+def calc_exp(x,o):
+    '''
+    Input:
+    x: shape = [num_traj,4,num_times] set of density operators
+    o: shape = [2,2] Hermetian operator to take expectation values of
+
+    Returns:
+    exp_o: shape = [num_traj,num_times] operator expectations
+    '''
+
+    # Unwrap and permute rho
+    rho = tf.transpose(tf.reshape(x, [-1,2,2,x.shape[-1]]), perm=[0,3,1,2])
+
+    return tf.linalg.trace(tf.matmul(rho, o))
 
 class GeometricSDE:
     def a(t,x,p):
