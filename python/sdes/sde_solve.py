@@ -121,9 +121,9 @@ class EulerMultiDModel(tf.Module):
     if wvec is not None:
       self.wvec = wvec
     else:
-      self.wvec = tf.random.normal(stddev=math.sqrt(self.deltat), shape=[num_traj,self.tvec.shape[0]-1,self.m,1])
+      self.wvec = tf.cast(tf.random.normal(stddev=math.sqrt(self.deltat), shape=[num_traj,self.tvec.shape[0]-1,self.m,1]), dtype=x0.dtype)
 
-    prevy = tf.ones(shape=[num_traj,self.d,1])*tf.reshape(x0,[-1,self.d,1])
+    prevy = tf.ones(shape=[num_traj,self.d,1], dtype=x0.dtype)*tf.reshape(x0,[-1,self.d,1])
     y = tf.reshape(prevy, [num_traj,self.d,1])
 
     for tidx, t in enumerate(self.tvec[:-1]):
@@ -211,12 +211,12 @@ class MilsteinModel(tf.Module):
     if wvec is not None:
         self.wvec = wvec
     else:
-        self.wvec = tf.random.normal(stddev=math.sqrt(self.deltat), shape=[num_traj,num_times-1,self.m,1])
+        self.wvec = tf.cast(tf.random.normal(stddev=math.sqrt(self.deltat), shape=[num_traj,num_times-1,self.m,1]), dtype=x0.dtype)
 
     self.jmat = multiintj12(self.m, self.p, self.deltat, self.wvec) # [num_traj,num_times-1,m,m]
     self.imat = 0.5*tf.eye(self.m, self.m, [num_traj,num_times-1])*(tf.matmul(self.wvec, tf.transpose(self.wvec, perm=[0,1,3,2])) - self.deltat) + self.jmat # [num_traj,num_times-1,m,m]
 
-    prevy = tf.ones(shape=[num_traj,self.d,1])*tf.reshape(x0,[-1,self.d,1])
+    prevy = tf.ones(shape=[num_traj,self.d,1], dtype=x0.dtype)*tf.reshape(x0,[-1,self.d,1])
     y = tf.reshape(prevy, [num_traj,self.d,1])
 
     for tidx, t in enumerate(self.tvec[:-1]):
