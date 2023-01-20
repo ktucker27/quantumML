@@ -112,12 +112,20 @@ class GenoisSDE:
         hq = tf.expand_dims(hq,1)
         return np.power(0.5*p[2],0.5)*tf.concat(hi, hq, axis=1)
 
-    # SDE functions for the weak measurement records
-    def mia(t,x,p):
-        rho = tf.reshape(p[3:], [-1,2,2])
+class GenoisTrajSDE:
+    def __init__(self, rhovec, deltat):
+        self.rhovec = rhovec
+        self.deltat = deltat
+
+    def get_rho(self, t):
+        tidx = np.rint(t/self.deltat).astype(int)
+        return tf.reshape(self.rhovec[:,:,tidx], [-1,2,2])
+    
+    def mia(self,t,x,p):
+        rho = self.get_rho(t)
         _, _, sz = paulis()
         l = np.power(0.5*p[1],0.5)*np.array(sz)
-        np.power(0.5*p[2],0.5)*tf.reshape(tf.linalg.trace(tf.matmul(rho,2.0*l)), [-1,1,1])
+        return np.power(0.5*p[2],0.5)*tf.reshape(tf.linalg.trace(tf.matmul(rho,2.0*l)), [-1,1,1])
 
     def mib(t,x,p):
         return tf.ones(x.shape)
