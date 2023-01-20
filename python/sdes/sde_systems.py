@@ -89,28 +89,28 @@ class GenoisSDE:
     def a(t,x,p):
         rho = tf.reshape(x, [-1,2,2])
         sx, _, sz = paulis()
-        ham = -0.5j*p[0]*(tf.matmul(sx,rho) - tf.matmul(rho,sx))
-        supd = GenoisSDE.supd_herm(np.power(0.5*p[1],0.5)*np.array(sz), rho)
+        ham = -0.5j*tf.cast(p[0], tf.complex128)*(tf.matmul(sx,rho) - tf.matmul(rho,sx))
+        supd = GenoisSDE.supd_herm(tf.pow(0.5*tf.cast(p[1], tf.complex128),0.5)*np.array(sz), rho)
 
         return tf.reshape(ham + supd, [-1,4,1])
 
     def b(t,x,p):
         rho = tf.reshape(x, [-1,2,2])
         _, _, sz = paulis()
-        hi = tf.reshape(GenoisSDE.suph_herm(np.power(0.5*p[1],0.5)*np.array(sz), rho), [-1,4,1])
-        hq = tf.reshape(GenoisSDE.suph_herm(-1.0j*np.power(0.5*p[1],0.5)*np.array(sz), rho), [-1,4,1])
+        hi = tf.reshape(GenoisSDE.suph_herm(tf.pow(0.5*tf.cast(p[1], tf.complex128),0.5)*np.array(sz), rho), [-1,4,1])
+        hq = tf.reshape(GenoisSDE.suph_herm(-1.0j*tf.pow(0.5*tf.cast(p[1], tf.complex128),0.5)*np.array(sz), rho), [-1,4,1])
 
-        return np.power(0.5*p[2],0.5)*tf.concat([hi, hq], axis=2)
+        return tf.pow(0.5*tf.cast(p[2], tf.complex128),0.5)*tf.concat([hi, hq], axis=2)
 
     def bp(t,x,p):
         # return shape = [num_traj,m=2,d=4,d=4]
         rho = tf.reshape(x, [-1,2,2])
         _, _, sz = paulis()
-        hi = GenoisSDE.suph_herm_p(np.power(0.5*p[1],0.5)*np.array(sz), rho)
-        hq = GenoisSDE.suph_herm_p(-1.0j*np.power(0.5*p[1],0.5)*np.array(sz), rho)
+        hi = GenoisSDE.suph_herm_p(tf.pow(0.5*p[1],0.5)*np.array(sz), rho)
+        hq = GenoisSDE.suph_herm_p(-1.0j*tf.pow(0.5*p[1],0.5)*np.array(sz), rho)
         hi = tf.expand_dims(hi,1)
         hq = tf.expand_dims(hq,1)
-        return np.power(0.5*p[2],0.5)*tf.concat(hi, hq, axis=1)
+        return tf.pow(0.5*p[2],0.5)*tf.concat(hi, hq, axis=1)
 
 class GenoisTrajSDE:
     def __init__(self, rhovec, deltat):
@@ -124,8 +124,8 @@ class GenoisTrajSDE:
     def mia(self,t,x,p):
         rho = self.get_rho(t)
         _, _, sz = paulis()
-        l = np.power(0.5*p[1],0.5)*np.array(sz)
-        return np.power(0.5*p[2],0.5)*tf.reshape(tf.linalg.trace(tf.matmul(rho,2.0*l)), [-1,1,1])
+        l = tf.pow(0.5*p[1],0.5)*np.array(sz)
+        return tf.pow(0.5*p[2],0.5)*tf.reshape(tf.linalg.trace(tf.matmul(rho,2.0*l)), [-1,1,1])
 
     def mib(t,x,p):
         return tf.ones(x.shape)

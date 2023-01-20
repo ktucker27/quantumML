@@ -5,6 +5,18 @@ import sys
 import csv
 import math
 
+def md_mse_std_complex_loss(y_pred, y):
+  mean_diff = tf.reduce_mean(y_pred, axis=0) - tf.reduce_mean(tf.cast(y, dtype=y_pred.dtype), axis=0)
+  mean_loss = tf.reduce_mean(tf.reduce_sum(tf.cast(mean_diff*tf.math.conj(mean_diff), dtype=tf.float64), axis=1))
+
+  std_diff = tf.math.reduce_std(y_pred, axis=0) - tf.math.reduce_std(tf.cast(y, dtype=y_pred.dtype), axis=0)
+  std_loss = tf.reduce_mean(tf.reduce_sum(std_diff*tf.math.conj(std_diff), axis=1))
+
+  assert(not math.isnan(mean_loss))
+  assert(not math.isnan(std_loss))
+
+  return mean_loss + std_loss
+
 def md_mse_std_loss(y_pred, y):
   mean_loss = tf.reduce_mean(tf.reduce_sum(tf.square(tf.reduce_mean(y_pred, axis=0) - tf.reduce_mean(tf.cast(y, dtype=tf.float32), axis=0)), axis=1))
   std_loss = tf.reduce_mean(tf.reduce_sum(tf.square(tf.math.reduce_std(y_pred, axis=0) - tf.math.reduce_std(tf.cast(y, dtype=tf.float32), axis=0)), axis=1))
@@ -59,12 +71,12 @@ def fit_model(x0, y, sde_mod, loss_func, batch_size, epochs=10, learning_rate=0.
 
   y0 = sde_mod(x0, num_traj)
 
-  x0vec = np.ones([y.shape[0],1])*x0
+  x0vec = tf.ones([y.shape[0],1], dtype=x0.dtype)*x0
 
   init_loss = loss_func(y0, y)
   print('Init loss:', init_loss)
 
-  dataset = tf.data.Dataset.from_tensor_slices((tf.cast(x0vec, dtype=tf.float32), tf.cast(y, dtype=tf.float32)))
+  dataset = tf.data.Dataset.from_tensor_slices((x0vec, tf.cast(y, dtype=x0.dtype)))
   dataset = dataset.shuffle(buffer_size=x0vec.shape[0]).batch(batch_size)
 
   losses = [init_loss]
@@ -82,7 +94,7 @@ def fit_model(x0, y, sde_mod, loss_func, batch_size, epochs=10, learning_rate=0.
           v.assign_sub(learning_rate*g)
     
     # Calculate the loss for this epoch
-    loss = loss_func(sde_mod(tf.cast(x0vec, dtype=tf.float32)), y)
+    loss = loss_func(sde_mod(x0vec), y)
     losses.append(loss)
 
     if epoch % 1 == 0:
