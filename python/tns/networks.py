@@ -209,4 +209,50 @@ class MPS:
                 next_m = tf.tensordot(self.tensors[ii-1], next_m, [[1],[0]])
                 self.tensors[ii-1] = tf.transpose(next_m, perm=[0,2,1])
     
-    
+    def mps_zeros(n,bdim,pdim,obc):
+        '''
+        mps_zeros: Build zero Matrix Product State
+        
+        Parameters:
+        n    = Number of sites
+        bdim = Bond dimension. If a scalar, will be the bond
+               dimension between each pair of consecutive sites.
+               Otherwise, bdim(i) is the bond dimension between sites
+               i and i + 1
+        pdim = Physical dimension. A single scalar to use at each
+               site
+        obc  = If true, open boundary conditions will be assumed,
+               otherwise they will be periodic
+        '''
+            
+        if n < 2:
+            raise Exception('MPS requires at least 2 sites')
+        
+        if tf.rank(bdim) == 1:
+            bdim = bdim*tf.ones(n-1)
+        elif tf.rank(bdim) != 1 or bdim.shape[0] != n-1:
+            raise Exception('bdim must be a scalar or a n-1 vector')
+        
+        if tf.rank(pdim) == 1:
+            pdim = pdim*tf.ones(n)
+        elif tf.rank(pdim) != 1 or pdim.shape[0] != n:
+            raise Exception('pdim must be a scalar or a n vector')
+        
+        tensors = []
+        for ii in range(n):
+            if ii == 0:
+                if obc:
+                    t = tf.zeros(1,bdim[0],pdim[0])
+                else:
+                    t = tf.zeros(bdim[n-2],bdim[0],pdim[0])
+            elif ii == n-1:
+                if obc:
+                    t = tf.zeros(bdim[n-2],1,pdim[n-1])
+                else:
+                    t = tf.zeros(bdim[n-2],bdim[0],pdim[n-1])
+            else:
+                t = tf.zeros(bdim[ii-1],bdim[ii],pdim[ii])
+
+            tensors.append(t)
+        
+        return MPS(tensors)
