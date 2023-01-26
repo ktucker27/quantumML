@@ -46,7 +46,7 @@ def svd_trunc(a,tol=0.0,maxrank=None):
 
     endidx = 0
     for ii in range(a.shape[0]):
-        if s[...,ii,ii] > tol:
+        if s[ii] > tol:
             endidx = endidx + 1
         else:
             break
@@ -54,14 +54,14 @@ def svd_trunc(a,tol=0.0,maxrank=None):
     if maxrank is not None:
         endidx = min([endidx,maxrank])
     
-    return s[...,:endidx,:endidx], u[...,:endidx], v[...,:endidx]
+    return s[:endidx], u[...,:endidx], v[...,:endidx]
 
 class IndexIter:
 
     def __init__(self,dim):
         self.rank = len(dim)
-        self.curridx = np.zeros(self.rank)
-        self.endidx = -1*np.ones(self.rank)
+        self.curridx = np.zeros(self.rank, dtype=np.int32)
+        self.endidx = -1*np.ones(self.rank, dtype=np.int32)
         self.dim = dim
     
     def end(self):

@@ -118,7 +118,7 @@ class MPS:
 
     def pdim(self):
         n = self.num_sites()
-        d = tf.zeros(n)
+        d = np.zeros(n, dtype=np.int32)
         for ii in range(n):
             d[ii] = self.tensors[ii].shape[2]
 
@@ -126,7 +126,7 @@ class MPS:
     
     def state_vector(self):
         d = self.pdim()
-        psi = tf.zeros(tf.reduce_prod(d))
+        psi = np.zeros(np.prod(d))
 
         iter = operations.IndexIter(d)
         idx = 0
@@ -184,6 +184,7 @@ class MPS:
                 s, u, v = operations.svd_trunc(m, tol)
             else:
                 s, u, v = tf.linalg.svd(m)
+            s = tf.linalg.diag(s)
 
             self.tensors[ii] = tf.transpose(tf.reshape(u, [mdims[0], mdims[2], -1]), perm=[0,2,1])
             
@@ -200,6 +201,7 @@ class MPS:
                 s, u, v = operations.svd_trunc(m, tol)
             else:
                 s, u, v = tf.linalg.svd(m)
+            s = tf.linalg.diag(s)
 
             self.tensors[ii] = tf.reshape(tf.transpose(v, conjugate=True), [-1,mdims[1],mdims[2]])
             
@@ -256,3 +258,101 @@ class MPS:
             tensors.append(t)
         
         return MPS(tensors)
+
+class MPO:
+    def __init__(self, tensors):
+        '''
+        MPO: Class for representing a matrix product operator
+        tensors: A cell row vector of rank 4 tensors indexed as follows
+             2
+            _|_
+        0__|   |__1
+           |___|
+             |
+             3
+        '''
+        
+        self.tensors = tensors
+        
+        # Validate the incoming tensors
+        n = len(tensors)
+        for ii, t in enumerate(tensors):
+            if tf.rank(t) != 4:
+                raise Exception(f'Expected rank 4 tensor at site {ii}')
+            
+            if ii == 0:
+                continue
+            
+            if tensors[ii-1].shape[1] != t.shape[0]:
+                raise Exception(f'Bond dimension mismatch between sites {ii-1} and {ii}')
+
+    def num_sites(self):
+        return len(self.tensors)
+
+    def eval(self, sigma1, sigma2):
+        if len(sigma1) != self.num_sites():
+            raise Exception('Index vector 1 has incorrect rank')
+        
+        if len(sigma2) != self.num_sites():
+            raise Exception('Index vector 2 has incorrect rank')
+        
+        val = self.tensors[0][:,:,sigma2[0],sigma1[0]]
+        for ii in range(1,self.num_sites()):
+            val = tf.matmul(val, self.tensors[ii][:,:,sigma2[ii],sigma1[ii]])
+        
+        return operations.trace(val)
+    
+    def pdim(self):
+        '''
+        pdim: Returns physical dimensions of the MPO
+        pdim(0,:) = Physical dimension of the state operated on
+        pdim(1,:) = Physical dimension of the returned state
+        '''
+            
+        d = tf.zeros([2, self.num_sites()])
+        for ii in range(d.shape[1]):
+            d[0,ii] = self.tensors[ii].shape[2]
+            d[1,ii] = self.tensors[ii].shape[3]
+    
+    def matrix(self):
+        pdim = self.pdim()
+        
+        iter1 = operations.IndexIter(pdim[1,:])
+        op = tf.zeros(tf.reduce_prod(pdim[1,:]),tf.reduce_prod(pdim[0,:]))
+        ii = 0
+        while not iter1.end():
+            iter2 = operations.IndexIter(pdim[0,:])
+            jj = 0
+            while not iter2.end():
+                op[ii,jj] = self.eval(iter1.curridx, iter2.curridx)
+                jj = jj + 1
+                iter2.reverse_next()
+
+            ii = ii + 1
+            iter1.reverse_next()
+
+def state_to_mps(psi, n, pdim):
+    assert(len(psi) == pdim**n)
+
+    # The following splitting assumes the convention that the product basis is
+    # enumerated with the index on the last site toggling first
+    t2 = tf.reshape(psi, [pdim, -1])
+
+    ms = []
+    for ii in range(n-1):
+        if ii > 0:
+            t2 = tf.reshape(c, [c.shape[0]*c.shape[1],-1])
+        
+        ts, tu, tv = tf.linalg.svd(t2)
+        ts = tf.linalg.diag(ts)
+        
+        ms.append(tf.transpose(tf.reshape(tu, [int(tu.shape[0]/pdim), pdim, -1]), perm=[0,2,1]))
+        
+        tsv_dagger = tf.matmul(ts, tf.transpose(tv, conjugate=True))
+        
+        if ii < n-2:
+            c = tf.reshape(tsv_dagger, [tsv_dagger.shape[0], pdim, int(tsv_dagger.shape[1]/pdim)])
+        else:
+            ms.append(tf.reshape(tsv_dagger, [tsv_dagger.shape[0],1,-1]))
+
+    return MPS(ms)
