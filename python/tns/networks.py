@@ -70,7 +70,7 @@ class MPS:
 
     def dagger(self):
         ms = []
-        for ii in self.num_sites():
+        for ii in range(self.num_sites()):
             ms.append(tf.math.conj(tf.identity(self.tensors[ii])))
 
         return MPS(ms)
@@ -85,7 +85,7 @@ class MPS:
         ten = tf.tensordot(self.tensors[0], mps.tensors[0], [[2],[2]])
         for ii in range(1,n):
             ten = tf.tensordot(ten, self.tensors[ii], [[1],[0]])
-            ten = tf.tensordot(ten, mps.tensors[ii], [[2,4],[0,3]])
+            ten = tf.tensordot(ten, mps.tensors[ii], [[2,4],[0,2]])
             
             if ii != n-1 or tf.rank(ten) > 0:
                 ten = tf.transpose(ten, perm=[0,2,1,3])
@@ -126,7 +126,7 @@ class MPS:
     
     def state_vector(self):
         d = self.pdim()
-        psi = np.zeros(np.prod(d))
+        psi = np.zeros(np.prod(d), dtype=np.complex128)
 
         iter = operations.IndexIter(d)
         idx = 0
@@ -151,7 +151,7 @@ class MPS:
     def is_left_normal(self, tol):
         e = True
         for ii in range(self.num_sites()):
-            a = tf.zeros(self.tensors[ii].shape[1], self.tensors[ii].shape[1])
+            a = tf.zeros([self.tensors[ii].shape[1], self.tensors[ii].shape[1]], dtype=self.tensors[ii].dtype)
             for jj in range(self.tensors[ii].shape[2]):
                 a = a + tf.matmul(tf.transpose(self.tensors[ii][:,:,jj], conjugate=True), self.tensors[ii][:,:,jj])
             
@@ -165,7 +165,7 @@ class MPS:
     def is_right_normal(self, tol):
         e = True
         for ii in range(self.num_sites()-1,-1,-1):
-            a = tf.zeros(self.tensors[ii].shape[0], self.tensors[ii].shape[0])
+            a = tf.zeros([self.tensors[ii].shape[0], self.tensors[ii].shape[0]], dtype=self.tensors[ii].dtype)
             for jj in range(self.tensors[ii].shape[2]):
                 a = a + tf.matmul(self.tensors[ii][:,:,jj], tf.transpose(self.tensors[ii][:,:,jj], conjugate=True))
             
@@ -184,12 +184,12 @@ class MPS:
                 s, u, v = operations.svd_trunc(m, tol)
             else:
                 s, u, v = tf.linalg.svd(m)
-            s = tf.linalg.diag(s)
+            s = tf.cast(tf.linalg.diag(s), dtype=v.dtype)
 
             self.tensors[ii] = tf.transpose(tf.reshape(u, [mdims[0], mdims[2], -1]), perm=[0,2,1])
             
             # Update the next tensor
-            if ii < self.num_sites():
+            if ii < self.num_sites() - 1:
                 next_m = tf.matmul(s, tf.transpose(v, conjugate=True))
                 self.tensors[ii+1] = tf.tensordot(next_m, self.tensors[ii+1], [[1],[0]])
     
@@ -201,7 +201,7 @@ class MPS:
                 s, u, v = operations.svd_trunc(m, tol)
             else:
                 s, u, v = tf.linalg.svd(m)
-            s = tf.linalg.diag(s)
+            s = tf.cast(tf.linalg.diag(s), dtype=v.dtype)
 
             self.tensors[ii] = tf.reshape(tf.transpose(v, conjugate=True), [-1,mdims[1],mdims[2]])
             
@@ -344,7 +344,7 @@ def state_to_mps(psi, n, pdim):
             t2 = tf.reshape(c, [c.shape[0]*c.shape[1],-1])
         
         ts, tu, tv = tf.linalg.svd(t2)
-        ts = tf.linalg.diag(ts)
+        ts = tf.cast(tf.linalg.diag(ts), dtype=tv.dtype)
         
         ms.append(tf.transpose(tf.reshape(tu, [int(tu.shape[0]/pdim), pdim, -1]), perm=[0,2,1]))
         
