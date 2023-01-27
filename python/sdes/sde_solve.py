@@ -5,6 +5,18 @@ import sys
 import csv
 import math
 
+def md_mse_std_complex_loss(y_pred, y):
+  mean_diff = tf.reduce_mean(y_pred, axis=0) - tf.reduce_mean(tf.cast(y, dtype=y_pred.dtype), axis=0)
+  mean_loss = tf.reduce_mean(tf.reduce_sum(tf.cast(mean_diff*tf.math.conj(mean_diff), dtype=tf.float64), axis=1))
+
+  std_diff = tf.math.reduce_std(y_pred, axis=0) - tf.math.reduce_std(tf.cast(y, dtype=y_pred.dtype), axis=0)
+  std_loss = tf.reduce_mean(tf.reduce_sum(std_diff*tf.math.conj(std_diff), axis=1))
+
+  assert(not math.isnan(mean_loss))
+  assert(not math.isnan(std_loss))
+
+  return mean_loss + std_loss
+
 def md_mse_std_loss(y_pred, y):
   mean_loss = tf.reduce_mean(tf.reduce_sum(tf.square(tf.reduce_mean(y_pred, axis=0) - tf.reduce_mean(tf.cast(y, dtype=tf.float32), axis=0)), axis=1))
   std_loss = tf.reduce_mean(tf.reduce_sum(tf.square(tf.math.reduce_std(y_pred, axis=0) - tf.math.reduce_std(tf.cast(y, dtype=tf.float32), axis=0)), axis=1))
@@ -54,6 +66,43 @@ def abs_err_loss(y_pred, y):
 def mean_abs_err_loss(y_pred, y):
   return tf.reduce_mean(tf.reduce_mean(tf.math.abs(y_pred - y), axis=0))
 
+def fit_model(x0, y, sde_mod, loss_func, batch_size, epochs=10, learning_rate=0.01):
+  num_traj = y.shape[0]
+
+  y0 = sde_mod(x0, num_traj)
+
+  x0vec = tf.ones([y.shape[0],1], dtype=x0.dtype)*x0
+
+  init_loss = loss_func(y0, y)
+  print('Init loss:', init_loss)
+
+  dataset = tf.data.Dataset.from_tensor_slices((x0vec, tf.cast(y, dtype=x0.dtype)))
+  dataset = dataset.shuffle(buffer_size=x0vec.shape[0]).batch(batch_size)
+
+  losses = [init_loss]
+
+  for epoch in range(epochs):
+    for x_batch, y_batch in dataset:
+      # Evaluate the loss function
+      with tf.GradientTape() as tape:
+        batch_loss = loss_func(sde_mod(x_batch), y_batch)
+      
+      # Calculate the gradient and update
+      grads = tape.gradient(batch_loss, sde_mod.variables)
+      for g, v in zip(grads, sde_mod.variables):
+        if g is not None:
+          v.assign_sub(learning_rate*g)
+    
+    # Calculate the loss for this epoch
+    loss = loss_func(sde_mod(x0vec), y)
+    losses.append(loss)
+
+    if epoch % 1 == 0:
+      print(f'Loss for epoch {epoch} = {loss.numpy():0.3f}')
+      print(sde_mod.variables)
+
+  return losses
+
 class EulerMultiDModel(tf.Module):
 
   def __init__(self, mint, maxt, deltat, a, b, d, m, num_params, params=None, fix_params=None):
@@ -76,17 +125,21 @@ class EulerMultiDModel(tf.Module):
     self.d = d
     self.m = m
   
-  @tf.function
-  def __call__(self, x0, num_traj=None):
+  #@tf.function
+  def __call__(self, x0, num_traj=None, wvec=None):
     if num_traj is None:
       num_traj = tf.shape(x0)[0]
-    self.wvec = tf.random.normal(stddev=math.sqrt(self.deltat), shape=[num_traj,self.m,1,self.tvec.shape[0]-1])
 
-    prevy = tf.ones(shape=[num_traj,self.d,1])*tf.reshape(x0,[-1,self.d,1])
+    if wvec is not None:
+      self.wvec = wvec
+    else:
+      self.wvec = tf.cast(tf.random.normal(stddev=math.sqrt(self.deltat), shape=[num_traj,self.tvec.shape[0]-1,self.m,1]), dtype=x0.dtype)
+
+    prevy = tf.ones(shape=[num_traj,self.d,1], dtype=x0.dtype)*tf.reshape(x0,[-1,self.d,1])
     y = tf.reshape(prevy, [num_traj,self.d,1])
 
     for tidx, t in enumerate(self.tvec[:-1]):
-      curry = prevy + self.a(t,prevy,self.params)*self.deltat + tf.matmul(self.b(t,prevy,self.params),self.wvec[:,:,:,tidx])
+      curry = prevy + self.a(t,prevy,self.params)*self.deltat + tf.matmul(self.b(t,prevy,self.params),self.wvec[:,tidx,:,:])
       y = tf.concat([y, curry], axis=2)
       prevy = curry
 
@@ -116,9 +169,9 @@ def multiintj12(m,p,deltat,wvec):
   sumval = tf.zeros([num_traj,num_times-1,m,m])
   rhop = 0.0
   for ridx in range(p):
-    r = ridx + 1
-    sumval = sumval + float(1/r)*(tf.matmul(zeta[:,:,:,:,ridx], tf.transpose(math.sqrt(2)*gsi + eta[...,ridx], perm=[0,1,3,2])))
-    rhop = rhop + 1/float(r*r)
+    r = float(ridx + 1)
+    sumval = sumval + (1/r)*(tf.matmul(zeta[:,:,:,:,ridx], tf.transpose(math.sqrt(2)*gsi + eta[...,ridx], perm=[0,1,3,2])))
+    rhop = rhop + (1/(r*r))
 
   sumval = (sumval - tf.transpose(sumval, perm=[0,1,3,2]))
   rhop = (1/12.0) - rhop/(2*math.pi**2)
@@ -161,17 +214,21 @@ class MilsteinModel(tf.Module):
     self.p = p
   
   #@tf.function
-  def __call__(self, x0, num_traj=None):
+  def __call__(self, x0, num_traj=None, wvec=None):
     if num_traj is None:
       num_traj = tf.shape(x0)[0]
     
     num_times = self.tvec.shape[0]
-    self.wvec = tf.random.normal(stddev=math.sqrt(self.deltat), shape=[num_traj,num_times-1,self.m,1])
 
-    self.jmat = multiintj12(m, self.p, self.deltat, self.wvec) # [num_traj,num_times-1,m,m]
+    if wvec is not None:
+        self.wvec = wvec
+    else:
+        self.wvec = tf.cast(tf.random.normal(stddev=math.sqrt(self.deltat), shape=[num_traj,num_times-1,self.m,1]), dtype=x0.dtype)
+
+    self.jmat = multiintj12(self.m, self.p, self.deltat, self.wvec) # [num_traj,num_times-1,m,m]
     self.imat = 0.5*tf.eye(self.m, self.m, [num_traj,num_times-1])*(tf.matmul(self.wvec, tf.transpose(self.wvec, perm=[0,1,3,2])) - self.deltat) + self.jmat # [num_traj,num_times-1,m,m]
 
-    prevy = tf.ones(shape=[num_traj,self.d,1])*tf.reshape(x0,[-1,self.d,1])
+    prevy = tf.ones(shape=[num_traj,self.d,1], dtype=x0.dtype)*tf.reshape(x0,[-1,self.d,1])
     y = tf.reshape(prevy, [num_traj,self.d,1])
 
     for tidx, t in enumerate(self.tvec[:-1]):
