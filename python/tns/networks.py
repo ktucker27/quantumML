@@ -367,16 +367,28 @@ def build_mpo(one_site, two_site, pdim, n):
 
     d = num_two_site + 2
 
-    m = np.zeros([d, d, pdim, pdim], dtype=np.cdouble)
-    m[0,0,:,:] = np.eye(pdim, dtype=np.cdouble)
-    m[-1,-1,:,:] = np.eye(pdim, dtype=np.cdouble)
+    m = tf.zeros([d, d, pdim, pdim], dtype=tf.complex128)
+    mask = np.zeros([d, d, pdim, pdim], dtype=np.cdouble)
+    mask[0,0,:,:] = 1.0
+    m = m + mask*np.eye(pdim, dtype=np.cdouble)
+    mask = 0*mask
+    mask[-1,-1,:,:] = 1.0
+    m = m + mask*np.eye(pdim, dtype=np.cdouble)
+    mask = 0*mask
 
+    mask[-1,0,:,:] = 1.0
     for ii in range(num_one_site):
-        m[-1,0,:,:] = m[-1,0,:,:] + one_site[ii]
+        m = m + mask*one_site[ii]
+    mask = 0*mask
 
+    mask2 = np.zeros([d, d, pdim, pdim], dtype=np.cdouble)
     for ii in range(num_two_site):
-        m[1+ii,0,:,:] = two_site[ii][1]
-        m[-1,1+ii,:,:] = two_site[ii][0]
+        mask[1+ii,0,:,:] = 1.0
+        mask2[-1,1+ii,:,:] = 1.0
+        m = m + mask*two_site[ii][1]
+        m = m + mask2*two_site[ii][0]
+        mask = 0*mask
+        mask2 = 0*mask2
 
     ms = []
     for ii in range(n):
@@ -385,6 +397,6 @@ def build_mpo(one_site, two_site, pdim, n):
         elif ii == n-1:
             ms.append(tf.expand_dims(m[:,0,:,:],1))
         else:
-            ms.append(tf.constant(m))
+            ms.append(m)
 
     return MPO(ms), m
