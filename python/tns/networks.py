@@ -308,17 +308,19 @@ class MPO:
         pdim(0,:) = Physical dimension of the state operated on
         pdim(1,:) = Physical dimension of the returned state
         '''
-            
-        d = tf.zeros([2, self.num_sites()])
+        
+        d = np.zeros([2, self.num_sites()], dtype=np.int32)
         for ii in range(d.shape[1]):
             d[0,ii] = self.tensors[ii].shape[2]
             d[1,ii] = self.tensors[ii].shape[3]
+
+        return d
     
     def matrix(self):
         pdim = self.pdim()
         
         iter1 = operations.IndexIter(pdim[1,:])
-        op = tf.zeros(tf.reduce_prod(pdim[1,:]),tf.reduce_prod(pdim[0,:]))
+        op = np.zeros([np.prod(pdim[1,:]),np.prod(pdim[0,:])], dtype=np.cdouble)
         ii = 0
         while not iter1.end():
             iter2 = operations.IndexIter(pdim[0,:])
@@ -330,6 +332,8 @@ class MPO:
 
             ii = ii + 1
             iter1.reverse_next()
+
+        return op
 
 def state_to_mps(psi, n, pdim):
     assert(len(psi) == pdim**n)
@@ -356,3 +360,31 @@ def state_to_mps(psi, n, pdim):
             ms.append(tf.reshape(tsv_dagger, [tsv_dagger.shape[0],1,-1]))
 
     return MPS(ms)
+
+def build_mpo(one_site, two_site, pdim, n):
+    num_one_site = len(one_site)
+    num_two_site = len(two_site)
+
+    d = num_two_site + 2
+
+    m = np.zeros([d, d, pdim, pdim], dtype=np.cdouble)
+    m[0,0,:,:] = np.eye(pdim, dtype=np.cdouble)
+    m[-1,-1,:,:] = np.eye(pdim, dtype=np.cdouble)
+
+    for ii in range(num_one_site):
+        m[-1,0,:,:] = m[-1,0,:,:] + one_site[ii]
+
+    for ii in range(num_two_site):
+        m[1+ii,0,:,:] = two_site[ii][1]
+        m[-1,1+ii,:,:] = two_site[ii][0]
+
+    ms = []
+    for ii in range(n):
+        if ii == 0:
+            ms.append(tf.expand_dims(m[-1,:,:,:],0))
+        elif ii == n-1:
+            ms.append(tf.expand_dims(m[:,0,:,:],1))
+        else:
+            ms.append(tf.constant(m))
+
+    return MPO(ms), m

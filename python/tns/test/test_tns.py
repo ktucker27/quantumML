@@ -1,13 +1,15 @@
 import numpy as np
+import tensorflow as tf
 import os
 import sys
+import unittest
 
 current = os.path.dirname(os.path.realpath(__file__))
 parent = os.path.dirname(current)
 sys.path.append(parent)
 
 import networks
-import unittest
+import operations
 
 class TestMPS(unittest.TestCase):
 
@@ -127,6 +129,45 @@ class TestMPS(unittest.TestCase):
         phaser = psi[0]/psi2[0]
         self.assertLessEqual(abs(abs(phaser) - 1), tol)
         self.assertLessEqual(np.max(np.abs(psi - phaser*psi2)), tol)
+
+class TestMPO(unittest.TestCase):
+    def test_matrix(self):
+        _, _, sz, sx, _ = operations.local_ops(2)
+        one_site = [-1.0*sz]
+        two_site = [[-1.0*sx,sx]]
+        mpo, _ = networks.build_mpo(one_site,two_site,2,4)
+        H = mpo.matrix()
+        H2 = operations.build_ham(one_site,two_site,2,4)
+        self.assertEqual(np.max(np.abs(H - H2)), 0.0)
+
+class TestLocalOps(unittest.TestCase):
+    def test_local_ops(self):
+        tol = 1e-12
+
+        for n in range(2,11):
+            print(f'Checking local ops for N={n}')
+            self.check_local_ops(n, tol)
+
+    def check_local_ops(self, n, tol):
+        sp, sm, sz, sx, sy = operations.local_ops(n)
+
+        # Test [sp,sm] = 2*sz
+        self.assertLessEqual(tf.reduce_max(tf.abs(tf.matmul(sp,sm) - tf.matmul(sm,sp) - 2.0*sz)), tol)
+
+        # Test [sz,sp] = sp
+        self.assertLessEqual(tf.reduce_max(tf.abs(tf.matmul(sz,sp) - tf.matmul(sp,sz) - sp)), tol)
+
+        # Test [sz,sm] = -sm
+        self.assertLessEqual(tf.reduce_max(tf.abs(tf.matmul(sz,sm) - tf.matmul(sm,sz) + sm)), tol)
+
+        # Test [sx,sy] = 1j*sz
+        self.assertLessEqual(tf.reduce_max(tf.abs(tf.matmul(sx,sy) - tf.matmul(sy,sx) - 1.0j*sz)), tol)
+
+        # Test [sy,sz] = 1j*sx
+        self.assertLessEqual(tf.reduce_max(tf.abs(tf.matmul(sy,sz) - tf.matmul(sz,sy) - 1.0j*sx)), tol)
+
+        # Test [sz,sx] = 1j*sy
+        self.assertLessEqual(tf.reduce_max(tf.abs(tf.matmul(sz,sx) - tf.matmul(sx,sz) - 1.0j*sy)), tol)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

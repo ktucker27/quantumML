@@ -56,6 +56,62 @@ def svd_trunc(a,tol=0.0,maxrank=None):
     
     return s[:endidx], u[...,:endidx], v[...,:endidx]
 
+def kron(a,b):
+    assert tf.rank(a) == 2
+    assert tf.rank(b) == 2
+    cp = tf.tensordot(a,b,axes=0)
+    c = tf.transpose(cp, perm=[0,2,1,3])
+    return tf.reshape(c, [a.shape[0]*b.shape[0], a.shape[1]*b.shape[1]])
+
+def local_ops(n):
+    '''
+    Returns nxn spin-(n-1)/2 operators on a single site in the following order:
+    [sp, sm, sx, sy, sz]
+    '''
+    ji = (n-1)/2.0
+    mvec = np.arange(ji,-ji-1.0,-1.0, dtype=np.cdouble)
+    
+    sz = tf.linalg.diag(mvec)
+    sp = tf.roll(tf.sqrt(tf.linalg.diag((ji - mvec)*(ji + mvec + 1))), shift=-1, axis=0)
+    sm = tf.roll(tf.sqrt(tf.linalg.diag((ji + mvec)*(ji - mvec + 1))), shift=1, axis=0)
+    sx = 0.5*(sp + sm)
+    sy = -0.5j*(sp - sm)
+
+    return sp, sm, sz, sx, sy
+
+def local_op_to_prod(olocal, idx, n):
+    pdim = olocal.shape[0]
+    idn = tf.eye(pdim, dtype=olocal.dtype)
+    id = tf.ones([1,1], dtype=olocal.dtype)
+    for ii in range(idx):
+        id = kron(id, idn)
+
+    o = kron(id, olocal)
+
+    id = tf.ones([1,1], dtype=olocal.dtype)
+    for ii in range(idx+1,n):
+        id = kron(id, idn)
+
+    return kron(o, id)
+
+def build_ham(one_site,two_site,pdim,n):
+    '''
+    Builds a Hamiltonian with the given pdim x pdim single site operators and pairs
+    of two site operators for each of the n sites, summed together
+    '''
+    h = tf.zeros([pdim**n, pdim**n], dtype=tf.complex128)
+    for ii in range(n):
+        for jj in range(len(one_site)):
+            h = h + local_op_to_prod(one_site[jj], ii, n)
+        
+        if ii < n - 1:
+            for jj in range(len(two_site)):
+                a = local_op_to_prod(two_site[jj][0], ii, n)
+                b = local_op_to_prod(two_site[jj][1], ii+1, n)
+                h = h + tf.matmul(a,b)
+
+    return h
+
 class IndexIter:
 
     def __init__(self,dim):
