@@ -1,6 +1,8 @@
 import numpy as np
 import tensorflow as tf
+from scipy import optimize
 import operations
+import tns_math
 
 class MPS:
 
@@ -390,6 +392,90 @@ def build_mpo(one_site, two_site, pdim, n):
         mask = 0*mask
         mask2 = 0*mask2
 
+    ms = []
+    for ii in range(n):
+        if ii == 0:
+            ms.append(tf.expand_dims(m[-1,:,:,:],0))
+        elif ii == n-1:
+            ms.append(tf.expand_dims(m[:,0,:,:],1))
+        else:
+            ms.append(m)
+
+    return MPO(ms), m
+
+def build_long_range_mpo(ops, pdim, n, rmult, rpow, npow, lops=[]):
+    '''
+    Implements the finite state automaton approach in section III of
+    G. Crosswhite, A. Doherty, G. Vidal
+    "Applying matrix product operators to model systems with long-range interactions" (2008)
+
+    Inputs:
+      ops - Pairs of operators to be strung together with the form
+            (rmult/r**rpow)*(I x ... x I x ops[ii][0] x I^(r-1) x ops[ii][1] x I x ... x I)
+            All strings of this type will be summed together to form the MPO
+      pdim - Physical dimension
+      n - Number of particles
+      npow - Number of terms in exponential approximation of r^-rpow
+    '''
+
+    # Determine the N term expansion for 1/r^rpow
+    if rpow > 0:
+        alpha, beta, _ = tns_math.pow_2_exp(rpow, 3, npow)
+        ab0 = np.concatenate([alpha,beta])
+        fun = lambda alpha_beta : tns_math.exp_loss(alpha_beta, rmult, rpow, n, npow)
+        bounds = [[-np.Inf,np.Inf]]*alpha.shape[0] + [[0,np.Inf]]*beta.shape[0]
+        result = optimize.minimize(fun, x0=ab0, method='Nelder-Mead', bounds=bounds, options={'maxiter':10000})
+        assert result.success
+        ab = result.x
+        alpha = ab[:npow]
+        beta = ab[npow:]
+        alpha = alpha*beta # So that coef. are rmult*(sum_n alpha_n*beta_n^(r-1))
+                           # One beta always comes with the operator since adjacent
+                           # sites => r = 1
+    else:
+        npow = 1
+        alpha = 1.0
+        beta = 1.0
+
+    # Build the transfer matrix M based on the automaton
+    # The operators will be read from right to left, and M(i,j,:,:) is the
+    # operator that is applied when transitioning from state j to state i
+    num_ops = len(ops)
+    d = num_ops*npow + 2
+    m = tf.zeros([d, d, pdim, pdim], dtype=tf.complex128)
+    mask = np.zeros([d, d, pdim, pdim], dtype=np.cdouble)
+
+    mask[0,0,:,:] = 1.0
+    m = m + mask*np.eye(pdim, dtype=np.cdouble)
+    mask = 0*mask
+    mask[-1,-1,:,:] = 1.0
+    m = m + mask*np.eye(pdim, dtype=np.cdouble)
+    mask = 0*mask
+
+    for ii in range(num_ops):
+        for jj in range(npow):
+            stateidx = 1 + ii*npow + jj
+            
+            mask[stateidx,0,:,:] = 1.0
+            m = m + mask*ops[ii][1]
+            mask = 0*mask
+
+            mask[stateidx,stateidx,:,:] = 1.0
+            m = m + mask*beta[jj]*np.eye(pdim, dtype=np.cdouble)
+            mask = 0*mask
+
+            mask[d-1,stateidx] = 1.0
+            m = m + mask*rmult*alpha[jj]*ops[ii][0]
+            mask = 0*mask
+
+    # Add local operators as a direct transition from the first state to the
+    # last
+    mask[d-1,0] = 1.0
+    for ii in range(len(lops)):
+        m = m + mask*lops[ii]
+    mask = 0*mask
+
+    # Assemble the MPO
     ms = []
     for ii in range(n):
         if ii == 0:

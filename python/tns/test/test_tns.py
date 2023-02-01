@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+from scipy import optimize
 import os
 import sys
 import unittest
@@ -10,6 +11,7 @@ sys.path.append(parent)
 
 import networks
 import operations
+import tns_math
 
 class TestMPS(unittest.TestCase):
 
@@ -168,6 +170,44 @@ class TestLocalOps(unittest.TestCase):
 
         # Test [sz,sx] = 1j*sy
         self.assertLessEqual(tf.reduce_max(tf.abs(tf.matmul(sz,sx) - tf.matmul(sx,sz) - 1.0j*sy)), tol)
+
+class TestPow2Exp(unittest.TestCase):
+    def test_pow_2_exp(self):
+        rcutoff = 10
+        npow = 5
+        b = 3
+        tol1 = 5e-3
+        tol2 = 6e-5
+        for p in range(1,11,1):
+            print(f'Checking pow_2_exp for p={p}')
+            self.check_pow_2_exp(p, rcutoff, b, npow, tol1, tol2)
+    
+    def check_pow_2_exp(self, p, rcutoff, b, npow, tol1, tol2):
+        def f(x,p):
+            return x**-p
+
+        x = np.arange(1, rcutoff, 0.1)
+
+        # Check pow_2_exp MSE
+        alpha, beta, _ = tns_math.pow_2_exp(p, b, npow)
+        pow_2_exp_approx = np.sum((alpha*np.power(np.expand_dims(beta,0),np.expand_dims(x,1))), axis=1)
+        mse = np.mean(np.square(f(x,p) - pow_2_exp_approx))
+        print(f'Initial mse={mse}')
+        self.assertLessEqual(mse, tol1)
+
+        # Check iterative refinement
+        ab0 = np.concatenate([alpha,beta])
+        fun = lambda alpha_beta : tns_math.exp_loss(alpha_beta, 1.0, p, rcutoff, npow)
+        bounds = [[-np.Inf,np.Inf]]*alpha.shape[0] + [[0,np.Inf]]*beta.shape[0]
+        result = optimize.minimize(fun, x0=ab0, method='L-BFGS-B', bounds=bounds, options={'maxiter':10000})
+        self.assertTrue(result.success)
+        ab = result.x
+        alpha = ab[:npow]
+        beta = ab[npow:]
+        opt_approx = np.sum((alpha*np.power(np.expand_dims(beta,0),np.expand_dims(x,1))), axis=1)
+        mse = np.mean(np.square(f(x,p) - opt_approx))
+        print(f'Final mse={mse}')
+        self.assertLessEqual(mse, tol2)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
