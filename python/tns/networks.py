@@ -319,23 +319,14 @@ class MPO:
         return d
     
     def matrix(self):
-        pdim = self.pdim()
+        n = self.num_sites()
+        ten = self.tensors[0]
+        for ii in range(1,n):
+            ten = tf.tensordot(ten, self.tensors[ii], [[1],[0]])
+            ten = tf.transpose(ten, perm=[0, 3, 1, 4, 2, 5])
+            ten = tf.reshape(ten, [ten.shape[0], ten.shape[1], ten.shape[2]*ten.shape[3], -1])
         
-        iter1 = operations.IndexIter(pdim[1,:])
-        op = np.zeros([np.prod(pdim[1,:]),np.prod(pdim[0,:])], dtype=np.cdouble)
-        ii = 0
-        while not iter1.end():
-            iter2 = operations.IndexIter(pdim[0,:])
-            jj = 0
-            while not iter2.end():
-                op[ii,jj] = self.eval(iter1.curridx, iter2.curridx)
-                jj = jj + 1
-                iter2.reverse_next()
-
-            ii = ii + 1
-            iter1.reverse_next()
-
-        return op
+        return tf.linalg.trace(tf.transpose(ten, perm=[2,3,0,1]))
 
 def state_to_mps(psi, n, pdim):
     assert(len(psi) == pdim**n)

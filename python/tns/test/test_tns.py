@@ -1,6 +1,5 @@
 import numpy as np
 import tensorflow as tf
-from scipy import optimize
 import os
 import sys
 import unittest
@@ -141,6 +140,30 @@ class TestMPO(unittest.TestCase):
         H = mpo.matrix()
         H2 = operations.build_ham(one_site,two_site,2,4)
         self.assertEqual(np.max(np.abs(H - H2)), 0.0)
+
+    def test_long_range(self):
+        tol = 1e-5
+
+        n = 3
+        pdim = 7
+        rmult = 1
+        rpow = 3
+        npow = 3
+
+        v = np.zeros([n,n])
+        for ii in range(n):
+            for jj in range(n):
+                if ii != jj:
+                    v[ii,jj] = 1.0/abs(ii-jj)**3
+
+        h = operations.thermal_ham(0, v, pdim, n)
+
+        _, _, sz, sx, sy = operations.local_ops(pdim)
+        ops = [[-0.5*sx,sx],[-0.5*sy,sy],[sz,sz]]
+        mpo, _ = networks.build_long_range_mpo(ops,pdim,n,rmult,rpow,npow)
+        h2 = mpo.matrix()
+
+        self.assertLessEqual(np.max(np.abs(h - h2)), tol)
 
 class TestLocalOps(unittest.TestCase):
     def test_local_ops(self):

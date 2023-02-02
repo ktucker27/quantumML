@@ -10,10 +10,9 @@ def trace(ten, indices=None):
     '''
 
     if indices is None:
-        indices = [[],[]]
         for ii in range(0,tf.rank(ten),2):
-            indices[0].append(ii)
-            indices[1].append(ii+1)
+            ten = tf.linalg.trace(ten)
+        return ten.numpy()
 
     perm = []
     for ii in range(tf.rank(ten)):
@@ -80,6 +79,10 @@ def local_ops(n):
     return sp, sm, sz, sx, sy
 
 def local_op_to_prod(olocal, idx, n):
+    '''
+    Returns the Kronecker product of olocal in the idx position with n - 1
+    identity operators in the other positions
+    '''
     pdim = olocal.shape[0]
     idn = tf.eye(pdim, dtype=olocal.dtype)
     id = tf.ones([1,1], dtype=olocal.dtype)
@@ -93,6 +96,26 @@ def local_op_to_prod(olocal, idx, n):
         id = kron(id, idn)
 
     return kron(o, id)
+
+def prod_ops(idx, pdim, n):
+    '''
+    Returns sparse matrix representations of the full product space
+    operators corresponding to the +/-/z operator for a given particle
+
+    Inputs:
+    idx - Particle index of the local operators
+    pdim - Physical dimension of the operators
+    n - Number of particles
+    '''
+    sp, sm, sz, sx, sy = local_ops(pdim)
+
+    psp = local_op_to_prod(sp, idx, n)
+    psm = local_op_to_prod(sm, idx, n)
+    psz = local_op_to_prod(sz, idx, n)
+    psx = local_op_to_prod(sx, idx, n)
+    psy = local_op_to_prod(sy, idx, n)
+
+    return psp, psm, psz, psx, psy
 
 def build_ham(one_site,two_site,pdim,n):
     '''
@@ -109,6 +132,28 @@ def build_ham(one_site,two_site,pdim,n):
                 a = local_op_to_prod(two_site[jj][0], ii, n)
                 b = local_op_to_prod(two_site[jj][1], ii+1, n)
                 h = h + tf.matmul(a,b)
+
+    return h
+
+def thermal_ham(bq, v, pdim, n):
+    '''
+    Builds the Hamiltonian used in the paper
+    S. Lepoutre et. al "Exploring out-of-equilibrium quantum magnetism and thermalization in a spin-3 many-body dipolar lattice system" (2018)
+    which leads to a thermal state where the question is whether or not the temperature can be determined
+
+    H = sum_{i>j} v(i,j)*(s_i^z*s_j^z - (1/2)*(s_i^x*s_j^x + s_i^y*s_j^y)) + bq*sum_{i=1}^n s_i^z*s_i^z
+    where s_i^a is the pdim x pdim spin-a operator for particle i out of a total of n
+    '''
+    h = tf.zeros([pdim**n, pdim**n], dtype=tf.complex128)
+
+    for i in range(n):
+        spi, smi, szi, sxi, syi = prod_ops(i, pdim, n)
+        for j in range(i+1,n):
+            _, _, szj, sxj, syj = prod_ops(j, pdim, n)
+            
+            h = h + v[i,j]*(tf.matmul(szi,szj) - 0.5*(tf.matmul(sxi,sxj) + tf.matmul(syi,syj)))
+        
+        h = h + bq*tf.matmul(szi,szi)
 
     return h
 
