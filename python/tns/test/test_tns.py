@@ -169,6 +169,35 @@ class TestMPO(unittest.TestCase):
 
         self.assertLessEqual(np.max(np.abs(h - h2)), tol)
 
+    def test_oat(self):
+        '''
+        Tests the construction of the one-axis twisting Hamiltonian
+        H = chi*(\sum_i=1^n s_i^z)**2
+        '''
+        tol = 1e-15
+
+        n = 5
+        pdim = 2
+        rmult = 2
+        rpow = 0
+        npow = 3
+
+        # Build the full product space Hamiltonian
+        csz = tf.zeros([pdim**n, pdim**n], dtype=tf.complex128)
+        for i in range(n):
+            _, _, szi, _, _ = operations.prod_ops(i, pdim, n)
+            csz = csz + szi
+        h = tf.matmul(csz,csz)
+
+        # Build the MPO
+        _, _, sz, _, _ = operations.local_ops(pdim)
+        ops = [[sz,sz]]
+        lops = [[0.25*tf.eye(pdim, dtype=tf.complex128)]]
+        mpo, _ = networks.build_long_range_mpo(ops,pdim,n,rmult,rpow,npow,lops)
+        h2 = mpo.matrix()
+
+        self.assertLessEqual(tf.reduce_max(tf.abs(h - h2)), tol)
+
 class TestLocalOps(unittest.TestCase):
     def test_local_ops(self):
         tol = 1e-12

@@ -418,8 +418,8 @@ def build_long_range_mpo(ops, pdim, n, rmult, rpow, npow, lops=[]):
                            # sites => r = 1
     else:
         npow = 1
-        alpha = 1.0
-        beta = 1.0
+        alpha = [1.0]
+        beta = [1.0]
 
     # Build the transfer matrix M based on the automaton
     # The operators will be read from right to left, and M(i,j,:,:) is the
@@ -454,7 +454,7 @@ def build_long_range_mpo(ops, pdim, n, rmult, rpow, npow, lops=[]):
 
     # Add local operators as a direct transition from the first state to the
     # last
-    mask[d-1,0] = 1.0
+    mask[d-1,0,:,:] = 1.0
     for ii in range(len(lops)):
         m = m + mask*lops[ii]
     mask = 0*mask
