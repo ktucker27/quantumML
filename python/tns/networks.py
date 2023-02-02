@@ -420,15 +420,8 @@ def build_long_range_mpo(ops, pdim, n, rmult, rpow, npow, lops=[]):
 
     # Determine the N term expansion for 1/r^rpow
     if rpow > 0:
-        alpha, beta, _ = tns_math.pow_2_exp(rpow, 3, npow)
-        ab0 = np.concatenate([alpha,beta])
-        fun = lambda alpha_beta : tns_math.exp_loss(alpha_beta, rmult, rpow, n, npow)
-        bounds = [[-np.Inf,np.Inf]]*alpha.shape[0] + [[0,np.Inf]]*beta.shape[0]
-        result = optimize.minimize(fun, x0=ab0, method='Nelder-Mead', bounds=bounds, options={'maxiter':10000})
-        assert result.success
-        ab = result.x
-        alpha = ab[:npow]
-        beta = ab[npow:]
+        alpha, beta, success = tns_math.pow_2_exp_refine(rpow, 3, npow, rmult, n)
+        assert success
         alpha = alpha*beta # So that coef. are rmult*(sum_n alpha_n*beta_n^(r-1))
                            # One beta always comes with the operator since adjacent
                            # sites => r = 1

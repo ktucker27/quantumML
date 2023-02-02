@@ -178,11 +178,12 @@ class TestPow2Exp(unittest.TestCase):
         b = 3
         tol1 = 5e-3
         tol2 = 6e-5
+        tol3 = 1e-3
         for p in range(1,11,1):
             print(f'Checking pow_2_exp for p={p}')
-            self.check_pow_2_exp(p, rcutoff, b, npow, tol1, tol2)
+            self.check_pow_2_exp(p, rcutoff, b, npow, tol1, tol2, tol3)
     
-    def check_pow_2_exp(self, p, rcutoff, b, npow, tol1, tol2):
+    def check_pow_2_exp(self, p, rcutoff, b, npow, tol1, tol2, tol3):
         def f(x,p):
             return x**-p
 
@@ -196,18 +197,22 @@ class TestPow2Exp(unittest.TestCase):
         self.assertLessEqual(mse, tol1)
 
         # Check iterative refinement
-        ab0 = np.concatenate([alpha,beta])
-        fun = lambda alpha_beta : tns_math.exp_loss(alpha_beta, 1.0, p, rcutoff, npow)
-        bounds = [[-np.Inf,np.Inf]]*alpha.shape[0] + [[0,np.Inf]]*beta.shape[0]
-        result = optimize.minimize(fun, x0=ab0, method='L-BFGS-B', bounds=bounds, options={'maxiter':10000})
-        self.assertTrue(result.success)
-        ab = result.x
-        alpha = ab[:npow]
-        beta = ab[npow:]
+        rmult = 1.0
+        alpha, beta, success = tns_math.pow_2_exp_refine(p, b, npow, rmult, rcutoff)
+        self.assertTrue(success)
         opt_approx = np.sum((alpha*np.power(np.expand_dims(beta,0),np.expand_dims(x,1))), axis=1)
-        mse = np.mean(np.square(f(x,p) - opt_approx))
+        mse = np.mean(np.square(rmult*f(x,p) - opt_approx))
         print(f'Final mse={mse}')
         self.assertLessEqual(mse, tol2)
+
+        # Check iterative refinement with rmult
+        rmult = 2.0
+        alpha, beta, success = tns_math.pow_2_exp_refine(p, b, npow, rmult, rcutoff)
+        self.assertTrue(success)
+        opt_approx = np.sum((alpha*np.power(np.expand_dims(beta,0),np.expand_dims(x,1))), axis=1)
+        mse = np.mean(np.square(rmult*f(x,p) - opt_approx))
+        print(f'Rmult mse={mse}')
+        self.assertLessEqual(mse, tol3)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
