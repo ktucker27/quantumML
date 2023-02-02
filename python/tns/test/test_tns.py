@@ -12,6 +12,8 @@ import networks
 import operations
 import tns_math
 
+test_tns_verbose = False
+
 class TestMPS(unittest.TestCase):
 
     def test_eval(self):
@@ -170,7 +172,7 @@ class TestLocalOps(unittest.TestCase):
         tol = 1e-12
 
         for n in range(2,11):
-            print(f'Checking local ops for N={n}')
+            if test_tns_verbose: print(f'Checking local ops for N={n}')
             self.check_local_ops(n, tol)
 
     def check_local_ops(self, n, tol):
@@ -203,7 +205,7 @@ class TestPow2Exp(unittest.TestCase):
         tol2 = 6e-5
         tol3 = 1e-3
         for p in range(1,11,1):
-            print(f'Checking pow_2_exp for p={p}')
+            if test_tns_verbose: print(f'Checking pow_2_exp for p={p}')
             self.check_pow_2_exp(p, rcutoff, b, npow, tol1, tol2, tol3)
     
     def check_pow_2_exp(self, p, rcutoff, b, npow, tol1, tol2, tol3):
@@ -216,7 +218,7 @@ class TestPow2Exp(unittest.TestCase):
         alpha, beta, _ = tns_math.pow_2_exp(p, b, npow)
         pow_2_exp_approx = np.sum((alpha*np.power(np.expand_dims(beta,0),np.expand_dims(x,1))), axis=1)
         mse = np.mean(np.square(f(x,p) - pow_2_exp_approx))
-        print(f'Initial mse={mse}')
+        if test_tns_verbose: print(f'Initial mse={mse}')
         self.assertLessEqual(mse, tol1)
 
         # Check iterative refinement
@@ -225,7 +227,7 @@ class TestPow2Exp(unittest.TestCase):
         self.assertTrue(success)
         opt_approx = np.sum((alpha*np.power(np.expand_dims(beta,0),np.expand_dims(x,1))), axis=1)
         mse = np.mean(np.square(rmult*f(x,p) - opt_approx))
-        print(f'Final mse={mse}')
+        if test_tns_verbose: print(f'Final mse={mse}')
         self.assertLessEqual(mse, tol2)
 
         # Check iterative refinement with rmult
@@ -234,7 +236,7 @@ class TestPow2Exp(unittest.TestCase):
         self.assertTrue(success)
         opt_approx = np.sum((alpha*np.power(np.expand_dims(beta,0),np.expand_dims(x,1))), axis=1)
         mse = np.mean(np.square(rmult*f(x,p) - opt_approx))
-        print(f'Rmult mse={mse}')
+        if test_tns_verbose: print(f'Rmult mse={mse}')
         self.assertLessEqual(mse, tol3)
 
 if __name__ == '__main__':
