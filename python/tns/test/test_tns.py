@@ -12,7 +12,9 @@ import networks
 import operations
 import tns_math
 
+# Set verbosity levels
 test_tns_verbose = False
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 class TestMPS(unittest.TestCase):
 
