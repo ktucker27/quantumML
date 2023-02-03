@@ -411,7 +411,7 @@ def build_long_range_mpo(ops, pdim, n, rmult, rpow, npow, lops=[]):
 
     # Determine the N term expansion for 1/r^rpow
     if rpow > 0:
-        alpha, beta, success = tns_math.pow_2_exp_refine(rpow, 3, npow, rmult, n)
+        alpha, beta, success = tns_math.pow_2_exp_refine(rpow, 3, npow, 1.0, n)
         assert success
         alpha = alpha*beta # So that coef. are rmult*(sum_n alpha_n*beta_n^(r-1))
                            # One beta always comes with the operator since adjacent
@@ -448,7 +448,7 @@ def build_long_range_mpo(ops, pdim, n, rmult, rpow, npow, lops=[]):
             m = m + mask*beta[jj]*np.eye(pdim, dtype=np.cdouble)
             mask = 0*mask
 
-            mask[d-1,stateidx] = 1.0
+            mask[d-1,stateidx,:,:] = 1.0
             m = m + mask*rmult*alpha[jj]*ops[ii][0]
             mask = 0*mask
 
@@ -466,6 +466,93 @@ def build_long_range_mpo(ops, pdim, n, rmult, rpow, npow, lops=[]):
             ms.append(tf.expand_dims(m[-1,:,:,:],0))
         elif ii == n-1:
             ms.append(tf.expand_dims(m[:,0,:,:],1))
+        else:
+            ms.append(m)
+
+    return MPO(ms), m
+
+def build_purification_mpo(ops, pdim, n, rmult, rpow, npow, lops=[]):
+    '''
+    Implements the long-range MPO for a purification of a system P on the purification space
+    P x Q where Q is an ancillary space identical to P. The returned operator is H x I in MPO
+    form. This is detailed in section 7.2.1 of
+    D. Schollwok "The density-matrix renormalization group in the age of matrix product states" (2011)
+
+    Inputs:
+      ops - Pairs of operators to be strung together with the form
+            (rmult/r**rpow)*(I x ... x I x ops[ii][0] x I^(r-1) x ops[ii][1] x I x ... x I)
+            All strings of this type will be summed together to form the MPO
+      pdim - Physical dimension
+      n - Number of particles
+      npow - Number of terms in exponential approximation of r^-rpow
+    '''
+
+    # Determine the N term expansion for 1/r^rpow
+    if rpow > 0:
+        alpha, beta, success = tns_math.pow_2_exp_refine(rpow, 3, npow, 1.0, n)
+        assert success
+        alpha = alpha*beta # So that coef. are rmult*(sum_n alpha_n*beta_n^(r-1))
+                           # One beta always comes with the operator since adjacent
+                           # sites => r = 1
+    else:
+        npow = 1
+        alpha = [1.0]
+        beta = [1.0]
+
+    # Build the transfer matrix M based on the automaton
+    # The operators will be read from right to left, and M(i,j,:,:) is the
+    # operator that is applied when transitioning from state j to state i
+    num_ops = len(ops)
+    d = 2*num_ops*npow + 3
+    m = tf.zeros([d, d, pdim, pdim], dtype=tf.complex128)
+    mask = np.zeros([d, d, pdim, pdim], dtype=np.cdouble)
+
+    mask[1,0,:,:] = 1.0
+    m = m + mask*np.eye(pdim, dtype=np.cdouble)
+    mask = 0*mask
+    mask[0,1,:,:] = 1.0
+    m = m + mask*np.eye(pdim, dtype=np.cdouble)
+    mask = 0*mask
+    mask[-1,-1,:,:] = 1.0
+    m = m + mask*np.eye(pdim, dtype=np.cdouble)
+    mask = 0*mask
+
+    for ii in range(num_ops):
+        for jj in range(npow):
+            stateidx = 2 + ii*2*npow + jj*2
+            
+            mask[stateidx,1,:,:] = 1.0
+            m = m + mask*ops[ii][1]
+            mask = 0*mask
+
+            mask[stateidx+1,stateidx,:,:] = 1.0
+            m = m + mask*np.eye(pdim, dtype=np.cdouble)
+            mask = 0*mask
+
+            mask[stateidx,stateidx+1,:,:] = 1.0
+            m = m + mask*beta[jj]*np.eye(pdim, dtype=np.cdouble)
+            mask = 0*mask
+
+            mask[d-1,stateidx+1,:,:] = 1.0
+            m = m + mask*rmult*alpha[jj]*ops[ii][0]
+            mask = 0*mask
+
+    # Add local operators as a direct transition from the first state to the
+    # last
+    mask[d-1,1,:,:] = 1.0
+    for ii in range(len(lops)):
+        m = m + mask*lops[ii]
+    mask = 0*mask
+
+    # Assemble the MPO
+    ms = []
+    for ii in range(2*n):
+        if ii == 0:
+            ms.append(tf.expand_dims(m[-1,:,:,:],0))
+        elif ii == 2*n - 1:
+            ms.append(tf.eye(pdim, dtype=tf.complex128)[tf.newaxis,tf.newaxis,:,:])
+        elif ii == 2*n - 2:
+            ms.append(tf.expand_dims(m[:,1,:,:],1))
         else:
             ms.append(m)
 

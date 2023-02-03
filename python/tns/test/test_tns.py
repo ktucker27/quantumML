@@ -150,7 +150,7 @@ class TestMPO(unittest.TestCase):
 
         n = 3
         pdim = 7
-        rmult = 1
+        rmult = 2
         rpow = 3
         npow = 3
 
@@ -158,7 +158,7 @@ class TestMPO(unittest.TestCase):
         for ii in range(n):
             for jj in range(n):
                 if ii != jj:
-                    v[ii,jj] = 1.0/abs(ii-jj)**3
+                    v[ii,jj] = rmult/abs(ii-jj)**rpow
 
         h = operations.thermal_ham(0, v, pdim, n)
 
@@ -197,6 +197,46 @@ class TestMPO(unittest.TestCase):
         h2 = mpo.matrix()
 
         self.assertLessEqual(tf.reduce_max(tf.abs(h - h2)), tol)
+
+    def test_purification(self):
+        tol = 1e-6
+
+        n = 3
+        rpow = 3
+        rmult = 2
+        npow = 3
+        pdim = 2
+        _, _, sz, sx, sy = operations.local_ops(pdim)
+
+        # Build the Hamiltonian matrix on the physical/auxiliary product space
+        v = np.zeros([n,n])
+        for ii in range(n):
+            for jj in range(n):
+                if ii != jj:
+                    v[ii,jj] = rmult/abs(ii-jj)**rpow
+
+        h = operations.thermal_ham(0, v, pdim, n)
+        id = tf.eye(pdim**n, dtype=tf.complex128)
+        hp = operations.kron(h,id)
+
+        # Build the MPO
+        ops = [[-0.5*sx,sx],[-0.5*sy,sy],[sz,sz]]
+        mpo, _ = networks.build_purification_mpo(ops,pdim,n,rmult,rpow,npow)
+
+        # Contract the MPO and group to reproduce the matrix
+        for ii in range(2*n):
+            if ii == 0:
+                ten = mpo.tensors[ii]
+            else:
+                ten = tf.tensordot(ten, mpo.tensors[ii], [[tf.rank(ten)-3],[0]])
+        ten = tf.squeeze(ten)
+
+        ten = tf.transpose(ten, perm=(list(range(1,4*n,4)) + list(range(3,4*n,4)) + list(range(0,4*n,4)) + list(range(2,4*n,4))))
+        ten = tf.reshape(ten, [(pdim**n)**2, (pdim**n)**2])
+        #T2 = T.group({[2*2*n:-4:4,2*2*n-2:-4:2],[2*2*n-1:-4:3,2*2*n-3:-4:1]});
+
+        # Compare the two matrices
+        self.assertLessEqual(tf.reduce_max(tf.abs(hp - ten)), tol)
 
 class TestLocalOps(unittest.TestCase):
     def test_local_ops(self):
