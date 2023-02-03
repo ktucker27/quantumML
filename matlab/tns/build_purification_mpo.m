@@ -7,7 +7,7 @@ end
 % Determine the N term expansion for 1/r^rpow
 [alpha, beta, ~] = pow_2_exp(rpow, 3, N);
 ab0 = [alpha,beta];
-fun = @(alpha_beta)(exp_loss(alpha_beta, rmult, rpow, n, N));
+fun = @(alpha_beta)(exp_loss(alpha_beta, 1.0, rpow, n, N));
 options = optimset('MaxFunEvals',10000000);
 ab = fminsearch(fun,ab0,options);
 alpha = ab(1:N);

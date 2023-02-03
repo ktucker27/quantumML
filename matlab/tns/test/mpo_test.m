@@ -53,7 +53,7 @@ tol = 1e-5;
 
 n = 3;
 pdim = 7;
-rmult = 1;
+rmult = 2;
 rpow = 3;
 N = 3;
 
@@ -61,7 +61,7 @@ V = zeros(n,n);
 for ii=1:n
 for jj=1:n
 if ii ~= jj
-V(ii,jj) = 1/abs(ii-jj)^3;
+V(ii,jj) = rmult/abs(ii-jj)^3;
 end
 end
 end
@@ -122,7 +122,7 @@ tol = 1e-6;
 
 n = 3;
 rpow = 3;
-rmult = 1;
+rmult = 2;
 N = 3;
 pdim = 2;
 [~, ~, sz, sx, sy] = local_ops(pdim);
@@ -132,7 +132,7 @@ V = zeros(n,n);
 for ii=1:n
     for jj=1:n
         if ii ~= jj
-            V(ii,jj) = 1/abs(ii-jj)^3;
+            V(ii,jj) = rmult/abs(ii-jj)^3;
         end
     end
 end
