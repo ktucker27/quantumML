@@ -557,3 +557,16 @@ def build_purification_mpo(ops, pdim, n, rmult, rpow, npow, lops=[]):
             ms.append(m)
 
     return MPO(ms), m
+
+def apply_mpo(mpo, mps):
+    n = mps.num_sites()
+
+    ms = []
+    for ii in range(n):
+        T = tf.tensordot(mpo.tensors[ii], mps.tensors[ii], [[2],[2]])
+        T = tf.transpose(T, perm=[0,3,1,4,2])
+        T2 = tf.reshape(T, [T.shape[0]*T.shape[1], T.shape[2]*T.shape[3], T.shape[4]])
+        
+        ms.append(T2)
+
+    return MPS(ms)

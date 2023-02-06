@@ -11,6 +11,7 @@ sys.path.append(parent)
 import networks
 import operations
 import tns_math
+import tns_solve
 
 # Set verbosity levels
 test_tns_verbose = False
@@ -309,6 +310,47 @@ class TestPow2Exp(unittest.TestCase):
         mse = np.mean(np.square(rmult*f(x,p) - opt_approx))
         if test_tns_verbose: print(f'Rmult mse={mse}')
         self.assertLessEqual(mse, tol3)
+    
+class TestDMRG(unittest.TestCase):
+
+    def test_transverse_ising(self):
+        tol = 1e-12
+        maxit = 20
+
+        n = 6
+        pdim = 2
+        jval = 1
+        hval = 1
+
+        _, _, sz, sx, _ = operations.local_ops(pdim)
+        one_site = [-hval*sz]
+        two_site = [[-jval*sx,sx]]
+
+        mpo, _ = networks.build_mpo(one_site,two_site,pdim,n)
+        h = mpo.matrix()
+        h2 = operations.build_ham(one_site,two_site,pdim,n)
+        self.assertLessEqual(tf.reduce_max(tf.abs(h - h2)), tol)
+
+        evals, evecs = tf.linalg.eig(h)
+        min_idx = tf.argmin(tf.math.real(evals))
+        psi0 = evecs[:,min_idx]
+        e0 = evals[min_idx]
+        psi = np.random.uniform(size=pdim**n) + 1j*np.random.uniform(size=pdim**n)
+        psi = psi/np.linalg.norm(psi)
+
+        mps = networks.state_to_mps(psi, n, pdim)
+        mps_out = tns_solve.dmrg(mpo, mps, tol, maxit)
+        psi_out = mps_out.state_vector()
+
+        phaser = psi_out[0]/psi0[0]
+        self.assertLessEqual(tf.abs(tf.abs(phaser) - 1), tol)
+
+        self.assertLessEqual(tf.reduce_max(tf.abs(psi0 - psi_out/phaser)), tol)
+
+        self.assertLessEqual(abs(mps_out.inner(mps_out) - 1), tol)
+
+        e = mps_out.inner(networks.apply_mpo(mpo, mps_out))
+        self.assertLessEqual(abs(e - e0), tol)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
