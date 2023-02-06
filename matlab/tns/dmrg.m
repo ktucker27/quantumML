@@ -132,6 +132,11 @@ for itidx=1:2*maxit
         mpo_mpo_ms = apply_mpo(mpo, mpo_ms);
         var = ms.inner(mpo_mpo_ms) - (ms.inner(mpo_ms))^2;
         
+        if abs(imag(var)) > EPS
+            error('Found complex energy variance');
+        end
+        var = real(var);
+        
         if var < -EPS
             error('Found negative energy variance');
         end
