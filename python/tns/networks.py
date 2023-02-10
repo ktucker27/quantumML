@@ -17,7 +17,9 @@ class MPS:
                   2
         '''
         
-        self.tensors = tensors
+        self.tensors = []
+        for ten in tensors:
+            self.tensors.append(ten)
             
         # Validate the incoming tensors
         self.validate()

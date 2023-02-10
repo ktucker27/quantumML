@@ -3,6 +3,7 @@ import tensorflow as tf
 import os
 import sys
 import unittest
+import time
 
 current = os.path.dirname(os.path.realpath(__file__))
 parent = os.path.dirname(current)
@@ -351,6 +352,48 @@ class TestDMRG(unittest.TestCase):
 
         e = mps_out.inner(networks.apply_mpo(mpo, mps_out))
         self.assertLessEqual(abs(e - e0), tol)
+
+class TestTDVP(unittest.TestCase):
+    def test_transverse_ising(self):
+        debug = True
+
+        tol = 1e-6
+
+        n = 4
+        pdim = 2
+        J = 1
+        h = 1
+        dt = 0.01
+        tfinal = 1
+
+        _, _, sz, sx, _ = operations.local_ops(pdim)
+        one_site = [-h*sz]
+        two_site = [[-J*sx,sx]]
+
+        mpo, _ = networks.build_mpo(one_site,two_site,pdim,n)
+        H = mpo.matrix()
+        H2 = operations.build_ham(one_site,two_site,pdim,n)
+        self.assertLessEqual(tf.reduce_max(tf.abs(H - H2)), tol)
+
+        psi0 = np.zeros(pdim**n, dtype=np.cdouble)
+        psi0[0] = 1.0
+        mps = networks.state_to_mps(psi0, n, pdim)
+
+        t0 = time.time()
+        tvec, mps_out, _, _ = tns_solve.tdvp(mpo, mps, dt, tfinal, 0, debug)
+        print(f'Run time (s): {time.time() - t0}')
+
+        evec = np.zeros(tvec.shape)
+        dtmat = tf.linalg.expm(-1j*H*dt)
+        psi = psi0[:,tf.newaxis]
+        for ii in range(tvec.shape[0]):
+            psi2 = mps_out[ii].state_vector()
+            phaser = psi[0,0]/psi2[0]
+            self.assertLessEqual(abs(abs(phaser) - 1), tol)
+            evec[ii] = tf.reduce_max(tf.abs(psi[:,0] - psi2*phaser))
+            psi = tf.matmul(dtmat,psi)
+
+        self.assertLessEqual(tf.reduce_max(evec), tol)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

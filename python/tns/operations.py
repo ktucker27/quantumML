@@ -1,6 +1,21 @@
 import numpy as np
 import tensorflow as tf
 
+def get_trunc_idx(v, eps):
+    v2 = v**2
+    d = np.sum(v2)
+    sv = np.zeros(v.shape)
+    for ii in range(v.shape[0]):
+        sv[ii] = np.sqrt(np.sum(v2[ii:])/d)
+    idxvec = np.argwhere(sv < eps)
+    if idxvec.shape[0] == 0:
+        idx = v.shape[0]
+    else:
+        idx = idxvec[0,0]-1
+
+    if idx <= 0:
+        raise Exception('Found zero truncation index')
+
 def trace(ten, indices=None):
     '''
     Returns the contraction of a tensor within itself (i.e. a trace) for indices
@@ -43,12 +58,7 @@ def tensor_equal(a,b,tol=0.0):
 def svd_trunc(a,tol=0.0,maxrank=None):
     s, u, v = tf.linalg.svd(a)
 
-    endidx = 0
-    for ii in range(a.shape[0]):
-        if s[ii] > tol:
-            endidx = endidx + 1
-        else:
-            break
+    endidx = get_trunc_idx(s.numpy(), tol)
     
     if maxrank is not None:
         endidx = min([endidx,maxrank])
@@ -199,4 +209,3 @@ class IndexIter:
             else:
                 self.curridx[ii] = 0
 
-    
