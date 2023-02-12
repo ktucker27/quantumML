@@ -504,9 +504,11 @@ def tdvp(mpo, mps, dt, tfinal, eps=0.0, debug=False, ef=None, exp_ops=[]):
                 msd.set_tensor(nextidx, tf.math.conj(next_m), False)
             
             ms.validate()
-            #assert(abs(ms.inner(ms) - 1.0) < 1e-4)
             msd.validate()
-            #assert(abs(msd.inner(msd) - 1.0) < 1e-4)
+
+            if np.imag(dt) == 0:
+                assert(abs(ms.inner(ms) - 1.0) < 1e-6)
+                assert(abs(msd.inner(msd) - 1.0) < 1e-6)
         
         # Flip the sweep direction
         if idxinc > 0:
