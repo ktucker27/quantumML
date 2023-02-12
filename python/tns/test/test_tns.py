@@ -459,5 +459,49 @@ class TestTDVP(unittest.TestCase):
         xerr = tf.reduce_max(tf.abs(ex - exp_out))
         self.assertLessEqual(xerr, tol)
 
+    def test_thermal(self):
+        debug = True
+
+        tol = 1e-6
+
+        n = 3
+        rpow = 3
+        rmult = 2
+        npow = 2
+        pdim = 2
+        _, _, sz, sx, sy = operations.local_ops(pdim)
+
+        # Build the Hamiltonian matrix on the physical/auxiliary product space
+        V = np.zeros([n,n], dtype=np.cdouble)
+        for ii in range(n):
+            for jj in range(n):
+                if ii != jj:
+                    V[ii,jj] = rmult/abs(ii-jj)**rpow
+        H = operations.thermal_ham(0, V, pdim, n)
+
+        # Build the MPO
+        ops = [[-0.5*sx,sx],[-0.5*sy,sy],[sz,sz]]
+        mpo, _ = networks.build_purification_mpo(ops,pdim,n,rmult,rpow,npow)
+
+        # Perform the imaginary time evolution
+        tfinal = -1j
+        dt = -0.01*1j
+        mps0 = networks.build_init_purification(n,pdim,pdim**n)
+        t0 = time.time()
+        tvec, _, eout, _ = tns_solve.tdvp(mpo, mps0, dt, tfinal, 0, debug)
+        print(f'Run time (s): {time.time() - t0}')
+
+        # Get the exact energy expectations
+        eout0 = np.zeros(tvec.shape, dtype=np.cdouble)
+        print(f'Checking {tvec.shape[0]} time values...')
+        for ii in range(tvec.shape[0]):
+            beta = 2*abs(tvec[ii])
+            rho = tf.linalg.expm(-beta*H)
+            rho = rho/tf.linalg.trace(rho)
+            eout0[ii] = tf.linalg.trace(tf.matmul(rho,H))
+
+        # Do the comparison
+        self.assertLessEqual(tf.reduce_max(tf.abs(eout - eout0)), tol)
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

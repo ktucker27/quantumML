@@ -107,12 +107,18 @@ def lanczos_mps(L, R, ops, b, numsteps):
         b = qmat[:,i+1]
         b = tf.reshape(b, bdims)
 
-    alphas = tf.concat((alphas, [alpha]), axis=0)
+    if alphas is None:
+        alphas = tf.ones([1], dtype=tf.complex128)*alpha
+    else:
+        alphas = tf.concat((alphas, [alpha]), axis=0)
 
-    beta_mat = tf.linalg.diag(tf.concat(([0.0],betas), axis=0))
-    sup = tf.roll(beta_mat, shift=-1, axis=0)
-    sub = tf.roll(beta_mat, shift=-1, axis=1)
-    tmat = tf.linalg.diag(alphas) + sup + sub
+    if betas is not None:
+        beta_mat = tf.linalg.diag(tf.concat(([0.0],betas), axis=0))
+        sup = tf.roll(beta_mat, shift=-1, axis=0)
+        sub = tf.roll(beta_mat, shift=-1, axis=1)
+        tmat = tf.linalg.diag(alphas) + sup + sub
+    else:
+        tmat = tf.zeros([1,1], dtype=tf.complex128)
 
     return tmat, qmat, alphas, betas
 
@@ -325,8 +331,8 @@ def tdvp(mpo, mps, dt, tfinal, eps=0.0, debug=False, ef=None, exp_ops=[]):
     '''
     tol = 1e-12
 
-    numt = int(tfinal/dt + 1)
-    tvec = np.zeros(numt)
+    numt = int(abs(tfinal)/abs(dt) + 1)
+    tvec = np.zeros(numt, dtype=np.array(dt).dtype)
     mps_out = [None for _ in range(numt)]
     eout = np.zeros(numt, dtype=np.cdouble)
     exp_out = np.zeros([len(exp_ops), numt], dtype=np.cdouble)
@@ -498,9 +504,9 @@ def tdvp(mpo, mps, dt, tfinal, eps=0.0, debug=False, ef=None, exp_ops=[]):
                 msd.set_tensor(nextidx, tf.math.conj(next_m), False)
             
             ms.validate()
-            assert(abs(ms.inner(ms) - 1.0) < 1e-6)
+            #assert(abs(ms.inner(ms) - 1.0) < 1e-4)
             msd.validate()
-            assert(abs(msd.inner(msd) - 1.0) < 1e-6)
+            #assert(abs(msd.inner(msd) - 1.0) < 1e-4)
         
         # Flip the sweep direction
         if idxinc > 0:

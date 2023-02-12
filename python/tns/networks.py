@@ -560,6 +560,46 @@ def build_purification_mpo(ops, pdim, n, rmult, rpow, npow, lops=[]):
 
     return MPO(ms), m
 
+def build_init_purification(n, pdim, bond=None):
+    if bond is None:
+        bond = 1
+
+    # Build a maximally mixed state between a physical site and an auxiliary
+    # site
+    psi = tf.zeros([pdim**2, 1], dtype=tf.complex128)
+    for ii in range(pdim):
+        sigma = np.zeros([pdim,1], dtype=np.cdouble)
+        sigma[ii,0] = 1
+        
+        psi = psi + operations.kron(sigma,sigma)
+    psi = (1.0/np.sqrt(pdim))*psi
+
+    # Convert to a MPS
+    site_mps = state_to_mps(psi, 2, pdim)
+    A = site_mps.tensors[0]
+    B = site_mps.tensors[1]
+    if bond > A.shape[1]:
+        T1 = tf.concat([A, tf.zeros([A.shape[0], bond-A.shape[1], A.shape[2]], dtype=A.dtype)], axis=1)
+        T2 = tf.concat([B, tf.zeros([bond-B.shape[0], B.shape[1], B.shape[2]], dtype=B.dtype)], axis=0)
+    else:
+        T1 = A
+        T2 = B
+
+    # String the maximally mixed MPS states together, one for each site
+    ms = [None for x in range(2*n)]
+    for ii in range(n):
+        if ii == 0 or bond == 1:
+            ms[2*ii] = T1
+        else:
+            ms[2*ii] = tf.concat([T1, tf.zeros([bond-1, T1.shape[1], T1.shape[2]], dtype=T1.dtype)], axis=0)
+        
+        if ii == n-1 or bond == 1:
+            ms[2*ii+1] = T2
+        else:
+            ms[2*ii+1] = tf.concat([T2, tf.zeros([T2.shape[0], bond-1, T2.shape[2]], dtype=T2.dtype)], axis=1)
+
+    return MPS(ms)
+
 def apply_mpo(mpo, mps):
     n = mps.num_sites()
 
