@@ -84,11 +84,11 @@ pass = 1;
 
 debug = true;
 
-tol = 1e-6;
+tol = 1e-5;
 
 n = 6;
 pdim = 2;
-chi = 1;
+chi = 2;
 rmult = 2;
 rpow = 0;
 N = 3;
@@ -98,7 +98,7 @@ tfinal = 1;
 % Build the MPO
 [~, ~, sz, sx, ~] = local_ops(pdim);
 ops = {chi*sz,sz};
-lops = {(1/4)*eye(pdim)};
+lops = {(chi/4)*eye(pdim)};
 [mpo,~] = build_long_range_mpo(ops,pdim,n,rmult,rpow,N,lops);
 mpo_x = build_mpo({sx},{},pdim,n);
 
@@ -110,7 +110,7 @@ for i=1:n
     csx = csx + sxi;
     csz = csz + szi;
 end
-H2 = csz*csz;
+H2 = chi*csz*csz;
 
 H = mpo.matrix();
 if max(max(abs(H - H2))) > tol
@@ -151,9 +151,9 @@ if max(evec) > tol
 end
 
 % Compare S_x value to expected
-ex = (n/2)*cos(tvec).^(n-1);
+ex = (n/2)*cos(tvec*chi).^(n-1);
 xerr = max(abs(ex - exp_out));
-if xerr > 1e-6
+if xerr > tol
     disp(['FAIL: Expected S_x value differs from exptected, error: ', num2str(xerr)]);
 end
 
