@@ -194,7 +194,7 @@ class TestMPO(unittest.TestCase):
         # Build the MPO
         _, _, sz, _, _ = operations.local_ops(pdim)
         ops = [[sz,sz]]
-        lops = [[0.25*tf.eye(pdim, dtype=tf.complex128)]]
+        lops = [0.25*tf.eye(pdim, dtype=tf.complex128)]
         mpo, _ = networks.build_long_range_mpo(ops,pdim,n,rmult,rpow,npow,lops)
         h2 = mpo.matrix()
 
@@ -386,6 +386,7 @@ class TestTDVP(unittest.TestCase):
         evec = np.zeros(tvec.shape)
         dtmat = tf.linalg.expm(-1j*H*dt)
         psi = psi0[:,tf.newaxis]
+        print(f'Checking {tvec.shape[0]} time values...')
         for ii in range(tvec.shape[0]):
             psi2 = mps_out[ii].state_vector()
             phaser = psi[0,0]/psi2[0]
@@ -394,6 +395,69 @@ class TestTDVP(unittest.TestCase):
             psi = tf.matmul(dtmat,psi)
 
         self.assertLessEqual(tf.reduce_max(evec), tol)
+
+    def test_oat(self):
+        debug = True
+
+        tol = 2e-5
+
+        n = 6
+        pdim = 2
+        chi = 2
+        rmult = 2
+        rpow = 0
+        npow = 3
+        dt = 0.01
+        tfinal = 1
+
+        # Build the MPO
+        _, _, sz, sx, _ = operations.local_ops(pdim)
+        ops = [[chi*sz,sz]]
+        lops = [(chi*0.25)*tf.eye(pdim, dtype=tf.complex128)]
+        mpo, _ = networks.build_long_range_mpo(ops,pdim,n,rmult,rpow,npow,lops)
+        mpo_x, _ = networks.build_mpo([sx],[],pdim,n)
+
+        # Build the full product space Hamiltonian
+        csx = tf.zeros([pdim**n, pdim**n], dtype=tf.complex128)
+        csz = tf.zeros([pdim**n, pdim**n], dtype=tf.complex128)
+        for i in range(n):
+            _, _, szi, sxi, _ = operations.prod_ops(i, pdim, n)
+            csx = csx + sxi
+            csz = csz + szi
+        H2 = chi*tf.matmul(csz, csz)
+
+        H = mpo.matrix()
+        self.assertLessEqual(tf.reduce_max(tf.abs(H - H2)), tol)
+
+        # Get the initial condition +x
+        evals, evecs = tf.linalg.eig(csx)
+        idx = tf.math.argmax(tf.math.real(evals))
+        psi0 = evecs[:,idx]
+        mps = networks.state_to_mps(psi0, n, pdim)
+
+        # Do the time evolution
+        t0 = time.time()
+        tvec, mps_out, _, exp_out = tns_solve.tdvp(mpo, mps, dt, tfinal, 0, debug, None, [mpo_x])
+        print(f'Run time (s): {time.time() - t0}')
+
+        # Compare evolved state with the exact state
+        evec = np.zeros(tvec.shape)
+        dtmat = tf.linalg.expm(-1j*H*dt)
+        psi = psi0[:,tf.newaxis]
+        print(f'Checking {tvec.shape[0]} time values...')
+        for ii in range(tvec.shape[0]):
+            psi2 = mps_out[ii].state_vector()
+            phaser = psi[0,0]/psi2[0]
+            self.assertLessEqual(abs(abs(phaser) - 1), tol)
+            evec[ii] = tf.reduce_max(tf.abs(psi[:,0] - psi2*phaser))
+            psi = tf.matmul(dtmat, psi)
+
+        self.assertLessEqual(tf.reduce_max(evec), tol)
+
+        # Compare S_x value to expected
+        ex = (n/2.0)*np.cos(tvec*chi)**(n-1)
+        xerr = tf.reduce_max(tf.abs(ex - exp_out))
+        self.assertLessEqual(xerr, tol)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
