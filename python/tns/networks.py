@@ -114,7 +114,7 @@ class MPS:
 
     def rank(self):
         n = self.num_sites()
-        r = tf.zeros(n-1)
+        r = np.zeros(n-1)
         for ii in range(n-1):
             r[ii] = self.tensors[ii].shape[1]
         

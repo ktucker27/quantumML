@@ -16,6 +16,8 @@ def get_trunc_idx(v, eps):
     if idx <= 0:
         raise Exception('Found zero truncation index')
 
+    return idx
+
 def trace(ten, indices=None):
     '''
     Returns the contraction of a tensor within itself (i.e. a trace) for indices
@@ -60,7 +62,7 @@ def svd_trunc(a,tol=0.0,maxrank=None):
 
     endidx = get_trunc_idx(s.numpy(), tol)
     
-    if maxrank is not None:
+    if maxrank is not None and maxrank > 0:
         endidx = min([endidx,maxrank])
     
     return s[:endidx], u[...,:endidx], v[...,:endidx]

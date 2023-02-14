@@ -503,5 +503,56 @@ class TestTDVP(unittest.TestCase):
         # Do the comparison
         self.assertLessEqual(tf.reduce_max(tf.abs(eout - eout0)), tol)
 
+class TestTDVP2(unittest.TestCase):
+
+    def test_transverse_ising(self):
+        debug = True
+
+        tol = 1e-6
+
+        n = 4
+        pdim = 2
+        J = 1
+        h = 1
+        dt = 0.01
+        tfinal = 1
+        svdtol = 1e-15
+
+        _, _, sz, sx, _ = operations.local_ops(pdim)
+        one_site = [-h*sz]
+        two_site = [[-J*sx,sx]]
+
+        mpo, _ = networks.build_mpo(one_site,two_site,pdim,n)
+        H = mpo.matrix()
+        H2 = operations.build_ham(one_site,two_site,pdim,n)
+        self.assertLessEqual(tf.reduce_max(tf.abs(H - H2)), tol)
+
+        # Set up rank one initial condition representing psi0
+        psi0 = np.zeros(pdim**n, dtype=np.cdouble)
+        psi0[0] = 1.0
+        A = np.zeros([1,1,2])
+        A[0,0,0] = 1
+        ms = []
+        for ii in range(n):
+            ms.append(tf.constant(A, dtype=tf.complex128))
+        mps = networks.MPS(ms)
+
+        t0 = time.time()
+        tvec, mps_out, _, _ = tns_solve.tdvp2(mpo, mps, dt, tfinal, svdtol, 0, debug)
+        print(f'Run time (s): {time.time() - t0}')
+
+        evec = np.zeros(tvec.shape)
+        dtmat = tf.linalg.expm(-1j*H*dt)
+        psi = psi0[:,tf.newaxis]
+        print(f'Checking {tvec.shape[0]} time values...')
+        for ii in range(tvec.shape[0]):
+            psi2 = mps_out[ii].state_vector()
+            phaser = psi[0,0]/psi2[0]
+            self.assertLessEqual(abs(abs(phaser) - 1), tol)
+            evec[ii] = tf.reduce_max(tf.abs(psi[:,0] - psi2*phaser))
+            psi = tf.matmul(dtmat, psi)
+
+        self.assertLessEqual(tf.reduce_max(evec), tol)
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
