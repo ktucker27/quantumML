@@ -630,5 +630,91 @@ class TestTDVP2(unittest.TestCase):
         xerr = tf.reduce_max(tf.abs(ex - exp_out))
         self.assertLessEqual(xerr, 1e-2)
 
+    def test_thermal_rt(self):
+        debug = True
+
+        tol = 5.5e-5
+
+        n = 4
+        rpow = 3
+        rmult = 1
+        npow = 2
+        pdim = 2
+        dt = 0.01
+        tfinal = 1
+        svdtol = 1e-15
+
+        _, _, sz, sx, sy = operations.local_ops(pdim)
+
+        # Build the Hamiltonian matrix on the physical/auxiliary product space
+        V = np.zeros([n,n])
+        csx = np.zeros([pdim**n, pdim**n])
+        csy = np.zeros([pdim**n, pdim**n])
+        csz = np.zeros([pdim**n, pdim**n])
+        for ii in range(n):
+            for jj in range(n):
+                if ii != jj:
+                    V[ii,jj] = rmult/abs(ii-jj)**rpow
+            
+            _, _, szi, sxi, syi = operations.prod_ops(ii, pdim, n)
+            csx = csx + sxi.numpy()
+            csy = csy + syi.numpy()
+            csz = csz + szi.numpy()
+        csx = csx.astype(np.cdouble)
+        csz = csz.astype(np.cdouble)
+        H = operations.thermal_ham(0, V, pdim, n).numpy()
+        s2 = np.matmul(csx,csx) + np.matmul(csy,csy) + np.matmul(csz,csz)
+
+        # Build the MPO
+        ops = [[-0.5*sx,sx],[-0.5*sy,sy],[sz,sz]]
+        mpo, _ = networks.build_long_range_mpo(ops,pdim,n,rmult,rpow,npow)
+
+        # Build observables to check expectations
+        mpo_x, _ = networks.build_mpo([sx],[],pdim,n)
+
+        ops_s = [[sx,sx],[sy,sy],[sz,sz]]
+        lops_s = [0.75*tf.eye(pdim, dtype=tf.complex128)]
+        mpo_s2, _ = networks.build_long_range_mpo(ops_s,pdim,n,2,0,1,lops_s)
+
+        # Get the initial condition +x
+        evals, evecs = np.linalg.eig(csx)
+        idx = tf.math.argmax(tf.math.real(evals))
+        psi0 = evecs[:,idx]
+        #mps = networks.state_to_mps(psi0, n, pdim)
+        A = tf.ones([1,1,2], dtype=tf.complex128)
+        ms = []
+        for ii in range(n):
+            ms.append(tf.identity(A))
+        mps = networks.MPS(ms)
+
+        t0 = time.time()
+        tvec, mps_out, _, exp_out = tns_solve.tdvp2(mpo, mps, dt, tfinal, svdtol, 0, debug, None, [mpo_x, mpo_s2])
+        print(f'Run time (s): {time.time() - t0}')
+
+        # Compare evolved state with the exact state
+        evec = np.zeros(tvec.shape)
+        ex = np.zeros([2,tvec.shape[0]], dtype=np.cdouble)
+        dtmat = scipy.linalg.expm(-1j*H*dt)
+        psi = psi0[:,np.newaxis]
+        print(f'Checking {tvec.shape[0]} time values...')
+        for ii in range(tvec.shape[0]):
+            psi2 = mps_out[ii].state_vector()
+            phaser = psi[0,0]/psi2[0]
+            self.assertLessEqual(abs(abs(phaser) - 1), tol)
+            evec[ii] = tf.reduce_max(tf.abs(psi[:,0] - psi2*phaser))
+            ex[0,ii] = np.matmul(np.matmul(np.transpose(psi).conjugate(), csx), psi)[0][0]
+            ex[1,ii] = np.matmul(np.matmul(np.transpose(psi).conjugate(), s2), psi)[0][0]
+            psi = np.matmul(dtmat, psi)
+
+        self.assertLessEqual(tf.reduce_max(evec), tol)
+
+        # Compare S_x value to expected
+        xerr = tf.reduce_max(tf.abs(ex[0,:] - exp_out[0,:]))
+        self.assertLessEqual(xerr, tol)
+
+        # Compare S^2 value to expected
+        s2err = tf.reduce_max(tf.abs(ex[1,:] - exp_out[1,:]))
+        self.assertLessEqual(s2err, tol)
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
