@@ -32,6 +32,12 @@ class TestMPS(unittest.TestCase):
 
         mps = networks.state_to_mps(psi, n, pdim)
 
+        psi2 = mps.state_vector_eval()
+
+        diff = np.linalg.norm(psi - psi2)
+
+        self.assertLessEqual(diff, tol)
+
         psi2 = mps.state_vector()
 
         diff = np.linalg.norm(psi - psi2)

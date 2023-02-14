@@ -129,6 +129,23 @@ class MPS:
         return d
     
     def state_vector(self):
+        n = self.num_sites()
+
+        # Contract across all sites
+        for ii in range(n):
+            if ii == 0:
+                ten = self.tensors[ii]
+            else:
+                r = tf.rank(ten)
+                ten = tf.tensordot(ten, self.tensors[ii], [[r-2], [0]])
+
+        # Trace out the boundary dimensions
+        r = tf.rank(ten)
+        ten = operations.trace(ten, [[0], [r-2]])
+
+        return tf.reshape(ten, [-1])
+
+    def state_vector_eval(self):
         d = self.pdim()
         psi = np.zeros(np.prod(d), dtype=np.complex128)
 
