@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+import scipy
 import os
 import sys
 import unittest
@@ -553,6 +554,75 @@ class TestTDVP2(unittest.TestCase):
             psi = tf.matmul(dtmat, psi)
 
         self.assertLessEqual(tf.reduce_max(evec), tol)
+
+    def test_oat(self):
+        debug = True
+
+        tol = 4e-4
+
+        n = 10
+        pdim = 2
+        chi = 1
+        rmult = 2
+        rpow = 0
+        npow = 3
+        dt = 0.01
+        tfinal = 1
+        svdtol = 1e-6
+
+        # Build the MPO
+        _, _, sz, sx, _ = operations.local_ops(pdim)
+        ops = [[chi*sz,sz]]
+        lops = [(chi*0.25)*tf.eye(pdim, dtype=tf.complex128)]
+        mpo, _ = networks.build_long_range_mpo(ops,pdim,n,rmult,rpow,npow,lops)
+        mpo_x, _ = networks.build_mpo([sx],[],pdim,n)
+
+        # Build the full product space Hamiltonian
+        csx = np.zeros([pdim**n, pdim**n], dtype=float)
+        csz = np.zeros([pdim**n, pdim**n], dtype=float)
+        for i in range(n):
+            _, _, szi, sxi, _ = operations.prod_ops(i, pdim, n)
+            csx = csx + tf.cast(sxi, dtype=tf.float64).numpy()
+            csz = csz + tf.cast(szi, dtype=tf.float64).numpy()
+        H2 = chi*csz*csz
+
+        H = mpo.matrix()
+        self.assertLessEqual(tf.reduce_max(tf.abs(H - tf.cast(H2, dtype=tf.complex128))), tol)
+
+        # Get the initial condition +x
+        evals, evecs = np.linalg.eig(csx)
+        idx = tf.math.argmax(tf.math.real(evals))
+        psi0 = evecs[:,idx]
+        #mps = networks.state_to_mps(psi0, n, pdim)
+        A = tf.ones([1,1,2], dtype=tf.complex128)
+        ms = []
+        for ii in range(n):
+            ms.append(tf.identity(A))
+        mps = networks.MPS(ms)
+
+        # Do the time evolution
+        t0 = time.time()
+        tvec, mps_out, _, exp_out = tns_solve.tdvp2(mpo, mps, dt, tfinal, svdtol, 0, debug, None, [mpo_x])
+        print(f'Run time (s): {time.time() - t0}')
+
+        # Compare evolved state with the exact state
+        evec = np.zeros(tvec.shape)
+        dtmat = scipy.linalg.expm(-1j*H2*dt)
+        psi = psi0[:,np.newaxis]
+        print(f'Checking {tvec.shape[0]} time values...')
+        for ii in range(tvec.shape[0]):
+            psi2 = mps_out[ii].state_vector()
+            phaser = psi[0,0]/psi2[0]
+            self.assertLessEqual(abs(abs(phaser) - 1), 10*tol)
+            evec[ii] = tf.reduce_max(tf.abs(psi[:,0] - psi2*phaser))
+            psi = np.matmul(dtmat, psi)
+
+        self.assertLessEqual(tf.reduce_max(evec), tol)
+
+        # Compare S_x value to expected
+        ex = (n/2.0)*np.cos(tvec*chi)**(n-1)
+        xerr = tf.reduce_max(tf.abs(ex - exp_out))
+        self.assertLessEqual(xerr, 1e-2)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

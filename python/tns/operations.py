@@ -65,7 +65,7 @@ def svd_trunc(a,tol=0.0,maxrank=None):
     if maxrank is not None and maxrank > 0:
         endidx = min([endidx,maxrank])
     
-    return s[:endidx], u[...,:endidx], v[...,:endidx]
+    return s[:endidx+1], u[...,:endidx+1], v[...,:endidx+1]
 
 def kron(a,b):
     assert tf.rank(a) == 2
