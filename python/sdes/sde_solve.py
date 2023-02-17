@@ -105,15 +105,18 @@ def fit_model(x0, y, sde_mod, loss_func, batch_size, epochs=10, learning_rate=0.
 
 class EulerMultiDModel(tf.Module):
 
-  def __init__(self, mint, maxt, deltat, a, b, d, m, num_params, params=None, fix_params=None):
+  def __init__(self, mint, maxt, deltat, a, b, d, m, num_params, params=None, fix_params=None, create_params=True):
     self.num_params = num_params
-    self.params = []
-    for pidx in range(self.num_params):
-      # Randomly generate model parameters for those not provided
-      if params is None or params[pidx] is None:
-        self.params.append(tf.Variable(np.random.uniform()))
-      else:
-        self.params.append(tf.Variable(params[pidx], trainable=(fix_params is not None and not fix_params[pidx])))
+    if create_params:
+      self.params = []
+      for pidx in range(self.num_params):
+        # Randomly generate model parameters for those not provided
+        if params is None or params[pidx] is None:
+          self.params.append(tf.Variable(np.random.uniform()))
+        else:
+          self.params.append(tf.Variable(params[pidx], trainable=(fix_params is not None and not fix_params[pidx])))
+    else:
+      self.params = params
 
     #self.tvec = tf.range(mint,maxt,deltat)
     self.tvec = np.arange(mint,maxt,deltat)
@@ -126,9 +129,12 @@ class EulerMultiDModel(tf.Module):
     self.m = m
   
   #@tf.function
-  def __call__(self, x0, num_traj=None, wvec=None):
+  def __call__(self, x0, num_traj=None, wvec=None, params=None):
     if num_traj is None:
       num_traj = tf.shape(x0)[0]
+
+    if params is not None:
+      self.params = params
 
     if wvec is not None:
       self.wvec = wvec

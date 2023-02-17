@@ -124,20 +124,20 @@ class GenoisTrajSDE:
     def mia(self,t,x,p):
         rho = self.get_rho(t)
         _, _, sz = paulis()
-        l = tf.pow(0.5*p[1],0.5)*np.array(sz)
-        return tf.pow(0.5*p[2],0.5)*tf.reshape(tf.linalg.trace(tf.matmul(rho,2.0*l)), [-1,1,1])
+        l = tf.cast(tf.pow(0.5*p[1],0.5)*np.array(sz), dtype=rho.dtype)
+        return tf.cast(tf.pow(0.5*p[2],0.5), dtype=rho.dtype)*tf.reshape(tf.linalg.trace(tf.matmul(rho,2.0*l)), [-1,1,1])
 
-    def mib(t,x,p):
-        return tf.ones(x.shape)
+    def mib(self,t,x,p):
+        return tf.ones(x.shape, dtype=x.dtype)
 
-    def mibp(t,x,p):
-        return tf.zeros(x.shape)
+    def mibp(self,t,x,p):
+        return tf.zeros(x.shape, dtype=x.dtype)
 
-    def mqa(t,x,p):
-        return tf.zeros(x.shape)
+    def mqa(self,t,x,p):
+        return tf.zeros(x.shape, dtype=x.dtype)
 
-    def mqb(t,x,p):
-        return tf.ones(x.shape)
+    def mqb(self,t,x,p):
+        return tf.ones(x.shape, dtype=x.dtype)
 
-    def mqbp(t,x,p):
-        return tf.zeros(x.shape)
+    def mqbp(self,t,x,p):
+        return tf.zeros(x.shape, dtype=x.dtype)
