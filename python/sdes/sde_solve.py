@@ -115,6 +115,7 @@ class EulerMultiDModel(tf.Module):
           self.params.append(tf.Variable(np.random.uniform()))
         else:
           self.params.append(tf.Variable(params[pidx], trainable=(fix_params is not None and not fix_params[pidx])))
+      self.params = tf.stack(self.params)
     else:
       self.params = params
 

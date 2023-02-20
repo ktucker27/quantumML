@@ -125,29 +125,35 @@ class GenoisSDE:
         x - shape = [num_traj,3,1] Upper triangle of rho: [rho(0,0), rho(0,1), rho(1,1)]
         '''
         rho = unwrap_x_to_rho(x[...,0])
+        if tf.rank(p) == 1:
+            p = p[tf.newaxis,:]
         sx, _, sz = paulis()
-        ham = -0.5j*tf.cast(p[0], tf.complex128)*(tf.matmul(sx,rho) - tf.matmul(rho,sx))
-        supd = GenoisSDE.supd_herm(tf.pow(0.5*tf.cast(p[1], tf.complex128),0.5)*np.array(sz), rho)
+        ham = -0.5j*tf.cast(p[:,0], tf.complex128)*(tf.matmul(sx,rho) - tf.matmul(rho,sx))
+        supd = GenoisSDE.supd_herm(tf.pow(0.5*tf.cast(p[:,1], tf.complex128),0.5)*np.array(sz), rho)
 
         return wrap_rho_to_x(ham + supd)[:,:,tf.newaxis]
 
     def b(t,x,p):
         rho = unwrap_x_to_rho(x[...,0])
+        if tf.rank(p) == 1:
+            p = p[tf.newaxis,:]
         _, _, sz = paulis()
-        hi = tf.reshape(wrap_rho_to_x(GenoisSDE.suph_herm(tf.pow(0.5*tf.cast(p[1], tf.complex128),0.5)*np.array(sz), rho)), [-1,3,1])
-        hq = tf.reshape(wrap_rho_to_x(GenoisSDE.suph_herm(-1.0j*tf.pow(0.5*tf.cast(p[1], tf.complex128),0.5)*np.array(sz), rho)), [-1,3,1])
+        hi = tf.reshape(wrap_rho_to_x(GenoisSDE.suph_herm(tf.pow(0.5*tf.cast(p[:,1], tf.complex128),0.5)*np.array(sz), rho)), [-1,3,1])
+        hq = tf.reshape(wrap_rho_to_x(GenoisSDE.suph_herm(-1.0j*tf.pow(0.5*tf.cast(p[:,1], tf.complex128),0.5)*np.array(sz), rho)), [-1,3,1])
 
-        return tf.pow(0.5*tf.cast(p[2], tf.complex128),0.5)*tf.concat([hi, hq], axis=2)
+        return tf.pow(0.5*tf.cast(p[:,2], tf.complex128),0.5)*tf.concat([hi, hq], axis=2)
 
     def bp(t,x,p):
         # return shape = [num_traj,m=2,d=4,d=4]
         rho = unwrap_x_to_rho(x[...,0])
+        if tf.rank(p) == 1:
+            p = p[tf.newaxis,:]
         _, _, sz = paulis()
-        hi = GenoisSDE.suph_herm_p(tf.pow(0.5*p[1],0.5)*np.array(sz), rho)
-        hq = GenoisSDE.suph_herm_p(-1.0j*tf.pow(0.5*p[1],0.5)*np.array(sz), rho)
+        hi = GenoisSDE.suph_herm_p(tf.pow(0.5*p[:,1],0.5)*np.array(sz), rho)
+        hq = GenoisSDE.suph_herm_p(-1.0j*tf.pow(0.5*p[:,1],0.5)*np.array(sz), rho)
         hi = tf.expand_dims(hi,1)
         hq = tf.expand_dims(hq,1)
-        return tf.gather(tf.gather(tf.pow(0.5*p[2],0.5)*tf.concat(hi, hq, axis=1), [0,1,3], axis=2), [0,1,3], axis=3)
+        return tf.gather(tf.gather(tf.pow(0.5*p[:,2],0.5)*tf.concat(hi, hq, axis=1), [0,1,3], axis=2), [0,1,3], axis=3)
 
 class GenoisTrajSDE:
     def __init__(self, rhovec, deltat):
@@ -160,9 +166,11 @@ class GenoisTrajSDE:
     
     def mia(self,t,x,p):
         rho = self.get_rho(t)
+        if tf.rank(p) == 1:
+            p = p[tf.newaxis,:]
         _, _, sz = paulis()
-        l = tf.cast(tf.pow(0.5*p[1],0.5)*np.array(sz), dtype=rho.dtype)
-        return tf.cast(tf.pow(0.5*p[2],0.5), dtype=rho.dtype)*tf.reshape(tf.linalg.trace(tf.matmul(rho,2.0*l)), [-1,1,1])
+        l = tf.cast(tf.pow(0.5*p[:,1],0.5)*np.array(sz), dtype=rho.dtype)
+        return tf.cast(tf.pow(0.5*p[:,2],0.5), dtype=rho.dtype)*tf.reshape(tf.linalg.trace(tf.matmul(rho,2.0*l)), [-1,1,1])
 
     def mib(self,t,x,p):
         return tf.ones(x.shape, dtype=x.dtype)
