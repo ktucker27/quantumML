@@ -93,7 +93,7 @@ class MySDELayer(tf.keras.layers.Layer):
 
     return tf.reduce_mean(probs_by_params, axis=1)
 
-def qubit_crossentropy_loss(y_true, y_pred):
+def fusion_loss(y_true, y_pred):
     #num_prep_states = prep_states.shape[0]
     num_traj = 1
 
@@ -142,4 +142,4 @@ def build_fusion_model(grp_size, seq_len, num_features, lstm_size, num_params):
     return model
 
 def compile_model(model, optimizer='adam'):
-    model.compile(loss=qubit_crossentropy_loss, optimizer=optimizer)
+    model.compile(loss=fusion_loss, optimizer=optimizer)
