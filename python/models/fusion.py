@@ -143,4 +143,3 @@ def build_model(grp_size, seq_len, num_features, lmv, lstm_size, num_prep_states
 
 def compile_model(model, num_prep_states, optimizer='adam'):
     model.compile(loss=qubit_crossentropy_loss, optimizer=optimizer)
-#                  metrics=[masked_multi_prep_accuracy])
