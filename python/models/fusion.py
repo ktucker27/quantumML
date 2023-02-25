@@ -114,7 +114,7 @@ def qubit_crossentropy_loss(y_true, y_pred):
     #batch_size = tf.cast(K.shape(y_true_ro_results)[0], cross_ent_x.dtype)
     #return K.mean(cross_ent_x) + K.mean(cross_ent_y) + K.mean(cross_ent_z)
 
-def build_fusion_model(grp_size, seq_len, num_features, lmv, lstm_size, num_prep_states, num_params):
+def build_fusion_model(grp_size, seq_len, num_features, lstm_size, num_params):
     model = tf.keras.Sequential()
     
     model.add(tf.keras.layers.Input(shape=(seq_len, grp_size)))
