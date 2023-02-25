@@ -23,11 +23,11 @@ def calc_exp(x,o):
     '''
 
     # Unwrap and permute rho
-    rho = tf.transpose(tf.reshape(x, [-1,2,2,x.shape[-1]]), perm=[0,3,1,2])
+    rho = tf.transpose(tf.reshape(x, [-1,2,2,tf.shape(x)[-1]]), perm=[0,3,1,2])
 
     return tf.linalg.trace(tf.matmul(rho, o))
 
-def unwrap_x_to_rho(x):
+def unwrap_x_to_rho(x, pdim):
     '''
     Takes a tensor storing the upper triangle of rho in row major order and reshapes it
     into density operators
@@ -37,8 +37,8 @@ def unwrap_x_to_rho(x):
     rho - shape = [num_traj, pdim, pdim] where elements below the diagonal are the complex
           conjugates of their counterparts in x
     '''
-    num_traj = x.shape[0]
-    pdim = int(-0.5 + math.sqrt(0.25 + 2.0*x.shape[1]))
+    num_traj = tf.shape(x)[0]
+    #pdim = int(-0.5 + tf.math.sqrt(0.25 + 2.0*tf.cast(tf.shape(x)[1], dtype=tf.float32)))
     permidx = [int(pdim*ii + jj - ii*(ii+1)/2) if ii <= jj else int(pdim*(pdim+1)/2) for ii in range(pdim) for jj in range(pdim)]
     x2 = tf.concat([x,tf.zeros([num_traj,1], dtype=x.dtype)], axis=1)
     x3 = tf.gather(x2, permidx, axis=1)
@@ -46,7 +46,7 @@ def unwrap_x_to_rho(x):
     rho = (x4 + tf.transpose(x4, perm=[0,2,1], conjugate=True))*(tf.ones([num_traj,pdim,pdim], dtype=x4.dtype) - 0.5*tf.linalg.eye(pdim, dtype=x4.dtype))
     return rho
 
-def wrap_rho_to_x(rho):
+def wrap_rho_to_x(rho, pdim):
     '''
     Takes the upper triangle of rho and reshapes it to a vector in row major order
     Inputs:
@@ -54,7 +54,7 @@ def wrap_rho_to_x(rho):
     Outputs:
     x - shape = [num_traj, pdim*(pdim+1)/2]
     '''
-    pdim = rho.shape[1]
+    #pdim = int(tf.shape(rho)[1])
     vecsize = int(pdim*(pdim+1)/2)
     rhovec = tf.reshape(rho, [-1, pdim**2])
     permidx = tf.concat([[int(pdim*ii + jj) for ii in range(pdim) for jj in range(ii,pdim)], tf.zeros(int(pdim**2 - vecsize), dtype=tf.int32)], axis=0)
@@ -69,7 +69,7 @@ class GeometricSDE:
         return p[1]*x
 
     def bp(t,x,p):
-        return p[1]*tf.ones([x.shape[0],1,1,1])
+        return p[1]*tf.ones([tf.shape(x)[0],1,1,1])
 
 class Geometric2DSDE:
     def a(t,x,p):
@@ -79,7 +79,7 @@ class Geometric2DSDE:
         return tf.reshape(tf.constant([[1.0, 0.0],[0.0, 0.0]])*p[2] + tf.constant([[0.0, 0.0],[0.0, 1.0]])*p[3],[1,2,2])*x
 
     def bp(t,x,p):
-        num_traj = x.shape[0]
+        num_traj = tf.shape(x)[0]
         return tf.tile(tf.expand_dims(tf.stack([tf.constant([[1.0, 0.0],[0.0, 0.0]])*p[2],tf.constant([[0.0, 0.0],[0.0, 1.0]])*p[3]]), axis=0), [num_traj,1,1,1])
 
 class GenoisSDE:
@@ -125,24 +125,24 @@ class GenoisSDE:
         Version of a that assumes a rank one parameter tensor
         x - shape = [num_traj,3,1] Upper triangle of rho: [rho(0,0), rho(0,1), rho(1,1)]
         '''
-        rho = unwrap_x_to_rho(x[...,0])
+        rho = unwrap_x_to_rho(x[...,0], 2)
         sx, _, sz = paulis()
         ham = -0.5j*tf.cast(p[0], tf.complex128)*(tf.matmul(sx,rho) - tf.matmul(rho,sx))
         supd = GenoisSDE.supd_herm(tf.pow(0.5*tf.cast(p[1], tf.complex128),0.5)*np.array(sz), rho)
 
-        return wrap_rho_to_x(ham + supd)[:,:,tf.newaxis]
+        return wrap_rho_to_x(ham + supd, 2)[:,:,tf.newaxis]
 
     def b0(t,x,p):
-        rho = unwrap_x_to_rho(x[...,0])
+        rho = unwrap_x_to_rho(x[...,0], 2)
         _, _, sz = paulis()
-        hi = tf.reshape(wrap_rho_to_x(GenoisSDE.suph_herm(tf.pow(0.5*tf.cast(p[1], tf.complex128),0.5)*np.array(sz), rho)), [-1,3,1])
-        hq = tf.reshape(wrap_rho_to_x(GenoisSDE.suph_herm(-1.0j*tf.pow(0.5*tf.cast(p[1], tf.complex128),0.5)*np.array(sz), rho)), [-1,3,1])
+        hi = tf.reshape(wrap_rho_to_x(GenoisSDE.suph_herm(tf.pow(0.5*tf.cast(p[1], tf.complex128),0.5)*np.array(sz), rho), 2), [-1,3,1])
+        hq = tf.reshape(wrap_rho_to_x(GenoisSDE.suph_herm(-1.0j*tf.pow(0.5*tf.cast(p[1], tf.complex128),0.5)*np.array(sz), rho), 2), [-1,3,1])
 
         return tf.pow(0.5*tf.cast(p[2], tf.complex128),0.5)*tf.concat([hi, hq], axis=2)
 
     def bp0(t,x,p):
         # return shape = [num_traj,m=2,d=4,d=4]
-        rho = unwrap_x_to_rho(x[...,0])
+        rho = unwrap_x_to_rho(x[...,0], 2)
         _, _, sz = paulis()
         hi = GenoisSDE.suph_herm_p(tf.pow(0.5*p[1],0.5)*np.array(sz), rho)
         hq = GenoisSDE.suph_herm_p(-1.0j*tf.pow(0.5*p[1],0.5)*np.array(sz), rho)
@@ -154,28 +154,45 @@ class GenoisSDE:
         '''
         x - shape = [num_traj,3,1] Upper triangle of rho: [rho(0,0), rho(0,1), rho(1,1)]
         '''
-        rho = unwrap_x_to_rho(x[...,0])
+        rho = unwrap_x_to_rho(x[...,0], 2)
         if tf.rank(p) == 1:
             p = p[tf.newaxis,:]
         sx, _, sz = paulis()
-        ham = -0.5j*tf.cast(p[:,0,tf.newaxis,tf.newaxis], tf.complex128)*(tf.matmul(sx,rho) - tf.matmul(rho,sx))
-        supd = GenoisSDE.supd_herm(tf.pow(0.5*tf.cast(p[:,1,tf.newaxis,tf.newaxis], tf.complex128),0.5)*np.array(sz), rho)
+        #ham = -0.5j*tf.cast(p[:,0,tf.newaxis,tf.newaxis], tf.complex128)*(tf.matmul(sx,rho) - tf.matmul(rho,sx))
+        pten = tf.expand_dims(-0.5j*tf.cast(p[:,0], tf.complex128), axis=1)
+        pten = tf.expand_dims(pten, axis=1)
+        sx_rho = tf.matmul(sx,rho)
+        rho_sx = tf.matmul(rho,sx)
+        ham = pten*(sx_rho - rho_sx)
+        #supd = GenoisSDE.supd_herm(tf.pow(0.5*tf.cast(p[:,1,tf.newaxis,tf.newaxis], tf.complex128),0.5)*np.array(sz), rho)
+        pten1 = tf.pow(0.5*tf.cast(p[:,1], tf.complex128),0.5)
+        pten1 = tf.expand_dims(pten1, axis=1)
+        pten1 = tf.expand_dims(pten1, axis=1)
+        supd = GenoisSDE.supd_herm(pten1*np.array(sz), rho)
 
-        return wrap_rho_to_x(ham + supd)[:,:,tf.newaxis]
+        return wrap_rho_to_x(ham + supd, 2)[:,:,tf.newaxis]
 
     def b(t,x,p):
-        rho = unwrap_x_to_rho(x[...,0])
+        rho = unwrap_x_to_rho(x[...,0], 2)
         if tf.rank(p) == 1:
             p = p[tf.newaxis,:]
         _, _, sz = paulis()
-        hi = tf.reshape(wrap_rho_to_x(GenoisSDE.suph_herm(tf.pow(0.5*tf.cast(p[:,1,tf.newaxis,tf.newaxis], tf.complex128),0.5)*np.array(sz), rho)), [-1,3,1])
-        hq = tf.reshape(wrap_rho_to_x(GenoisSDE.suph_herm(-1.0j*tf.pow(0.5*tf.cast(p[:,1,tf.newaxis,tf.newaxis], tf.complex128),0.5)*np.array(sz), rho)), [-1,3,1])
+        #hi = tf.reshape(wrap_rho_to_x(GenoisSDE.suph_herm(tf.pow(0.5*tf.cast(p[:,1,tf.newaxis,tf.newaxis], tf.complex128),0.5)*np.array(sz), rho), 2), [-1,3,1])
+        #hq = tf.reshape(wrap_rho_to_x(GenoisSDE.suph_herm(-1.0j*tf.pow(0.5*tf.cast(p[:,1,tf.newaxis,tf.newaxis], tf.complex128),0.5)*np.array(sz), rho), 2), [-1,3,1])
+        pten = tf.pow(0.5*tf.cast(p[:,1], tf.complex128),0.5)
+        pten = tf.expand_dims(pten, axis=1)
+        pten = tf.expand_dims(pten, axis=1)
+        hi = tf.reshape(wrap_rho_to_x(GenoisSDE.suph_herm(pten*np.array(sz), rho), 2), [-1,3,1])
+        hq = tf.reshape(wrap_rho_to_x(GenoisSDE.suph_herm(-1.0j*pten*np.array(sz), rho), 2), [-1,3,1])
 
-        return tf.pow(0.5*tf.cast(p[:,2,tf.newaxis,tf.newaxis], tf.complex128),0.5)*tf.concat([hi, hq], axis=2)
+        pten2 = tf.pow(0.5*tf.cast(p[:,2], tf.complex128),0.5)
+        pten2 = tf.expand_dims(pten2, axis=1)
+        pten2 = tf.expand_dims(pten2, axis=1)
+        return pten2*tf.concat([hi, hq], axis=2)
 
     def bp(t,x,p):
         # return shape = [num_traj,m=2,d=4,d=4]
-        rho = unwrap_x_to_rho(x[...,0])
+        rho = unwrap_x_to_rho(x[...,0], 2)
         if tf.rank(p) == 1:
             p = p[tf.newaxis,:]
         _, _, sz = paulis()
@@ -209,16 +226,16 @@ class GenoisTrajSDE:
         return tf.cast(tf.pow(0.5*p[:,2,tf.newaxis,tf.newaxis],0.5), dtype=rho.dtype)*tf.reshape(tf.linalg.trace(tf.matmul(rho,2.0*l)), [-1,1,1])
 
     def mib(self,t,x,p):
-        return tf.ones(x.shape, dtype=x.dtype)
+        return tf.ones(tf.shape(x), dtype=x.dtype)
 
     def mibp(self,t,x,p):
-        return tf.zeros(x.shape, dtype=x.dtype)
+        return tf.zeros(tf.shape(x), dtype=x.dtype)
 
     def mqa(self,t,x,p):
-        return tf.zeros(x.shape, dtype=x.dtype)
+        return tf.zeros(tf.shape(x), dtype=x.dtype)
 
     def mqb(self,t,x,p):
-        return tf.ones(x.shape, dtype=x.dtype)
+        return tf.ones(tf.shape(x), dtype=x.dtype)
 
     def mqbp(self,t,x,p):
-        return tf.zeros(x.shape, dtype=x.dtype)
+        return tf.zeros(tf.shape(x), dtype=x.dtype)
