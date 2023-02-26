@@ -15,15 +15,15 @@ def kron(a,b):
 def calc_exp(x,o):
     '''
     Input:
-    x: shape = [num_traj,4,num_times] set of density operators
+    x: shape = [num_traj,num_times,4] set of density operators
     o: shape = [2,2] Hermetian operator to take expectation values of
 
     Returns:
     exp_o: shape = [num_traj,num_times] operator expectations
     '''
 
-    # Unwrap and permute rho
-    rho = tf.transpose(tf.reshape(x, [-1,2,2,tf.shape(x)[-1]]), perm=[0,3,1,2])
+    # Unwrap rho
+    rho = tf.reshape(x, [-1,tf.shape(x)[1],2,2])
 
     return tf.linalg.trace(tf.matmul(rho, o))
 

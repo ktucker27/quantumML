@@ -11,10 +11,11 @@ sys.path.append(os.path.join(parent, 'sdes'))
 import sde_solve
 import sde_systems
 
-def run_model(params, num_traj, deltat=2**(-8), comp_iq=True):
+def run_model(rho0, params, num_traj, mint, maxt, deltat=2**(-8), comp_iq=True):
   #rho0 = tf.reshape(tf.ones([num_traj,1,1], dtype=tf.complex128)*tf.constant([[1.0,0],[0,0]], dtype=tf.complex128), [num_traj,4,1])
   #rho0 = tf.reshape(tf.ones([num_traj,1,1], dtype=tf.complex128)*tf.constant([[0.5,0.5],[0.5,0.5]], dtype=tf.complex128), [num_traj,4,1])
-  x0 = tf.reshape(tf.ones([num_traj,1,1], dtype=tf.complex128)*tf.constant([1.0,0,0], dtype=tf.complex128), [num_traj,3,1])
+  #x0 = tf.reshape(tf.ones([num_traj,1,1], dtype=tf.complex128)*tf.constant([rho0[0,0],rho0[0,1],rho0[1,1]], dtype=tf.complex128), [num_traj,3,1])
+  x0 = sde_systems.wrap_rho_to_x(rho0, 2)
 
   d = 3
   m = 2
@@ -24,8 +25,8 @@ def run_model(params, num_traj, deltat=2**(-8), comp_iq=True):
   b = sde_systems.GenoisSDE.b
   bp = sde_systems.GenoisSDE.bp
 
-  mint = 0
-  maxt = 1.0
+  #mint = 0
+  #maxt = 1.0
   #deltat = 2**(-8)
 
   p0 = params
@@ -36,14 +37,14 @@ def run_model(params, num_traj, deltat=2**(-8), comp_iq=True):
   #params_ten = tf.tile(params[tf.newaxis,:], multiples=[num_traj,1])
   xvec = emod(x0, num_traj, wvec, params)
   rhovec = sde_systems.unwrap_x_to_rho(tf.reshape(tf.transpose(xvec, perm=[0,2,1]), [-1,3]), 2)
-  rhovec = tf.transpose(tf.reshape(rhovec, [num_traj,-1,4]), perm=[0,2,1])
+  rhovec = tf.reshape(rhovec, [num_traj,-1,4])
 
   tvec = emod.tvec
   #wvec = emod.wvec
 
   # Simulate the I voltage record
   if comp_iq:
-    traj_sdes = sde_systems.GenoisTrajSDE(rhovec, deltat)
+    traj_sdes = sde_systems.GenoisTrajSDE(tf.transpose(rhovec, perm=[0,2,1]), deltat)
     ai = traj_sdes.mia
     bi = traj_sdes.mib
     bpi = traj_sdes.mibp
