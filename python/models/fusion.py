@@ -80,11 +80,12 @@ class EulerRNNCell(tf.keras.layers.Layer):
   ''' An RNN cell for taking a single Euler step
   '''
 
-  def __init__(self, rho0, maxt, deltat, **kwargs):
+  def __init__(self, rho0, maxt, deltat, num_traj=1, **kwargs):
     self.rho0 = tf.reshape(rho0, [-1])
     self.maxt = maxt
     self.deltat = deltat
-    self.params = np.array([5.0265,0.0,0.36], dtype=np.double)
+    self.num_traj = num_traj
+    self.params = np.array([5.0265,1.1,0.36], dtype=np.double)
 
     self.state_size = self.rho0.shape
     self.output_size = 6
@@ -115,16 +116,22 @@ class EulerRNNCell(tf.keras.layers.Layer):
   def call(self, inputs, states):
     rho = states[0]
 
-    traj_inputs = tf.stack([self.params[0]*tf.ones(tf.shape(inputs), dtype=inputs.dtype), tf.pow(inputs, 2.0) + 1.0e-8, self.params[2]*tf.ones(tf.shape(inputs), dtype=inputs.dtype)], axis=1)
+    #traj_inputs = tf.stack([self.params[0]*tf.ones(tf.shape(inputs), dtype=inputs.dtype), tf.pow(inputs, 2.0) + 1.0e-8, self.params[2]*tf.ones(tf.shape(inputs), dtype=inputs.dtype)], axis=1)
+    traj_inputs = tf.stack([inputs + 1.0e-8, self.params[1]*tf.ones(tf.shape(inputs), dtype=inputs.dtype), self.params[2]*tf.ones(tf.shape(inputs), dtype=inputs.dtype)], axis=1)
     traj_inputs = tf.squeeze(traj_inputs)
+    traj_inputs = tf.tile(traj_inputs, multiples=[self.num_traj,1])
+    rho = tf.tile(rho, multiples=[self.num_traj,1])
 
     # Advance the state one time step
     rhovecs = self.run_model(rho, traj_inputs, num_traj=tf.shape(traj_inputs)[0], mint=0, maxt=self.maxt, deltat=self.deltat, comp_iq=False)
 
+    # Average over trajectories
+    rhovecs = tf.reduce_mean(tf.reshape(rhovecs, [self.num_traj,-1,rhovecs.shape[1],rhovecs.shape[2]]), axis=0)
+    
     # Calculate probabilities
     probs = tf.math.real(get_probs(rhovecs)[:,-1,:])
-    #probs = tf.math.maximum(probs,0)
-    #probs = tf.math.minimum(probs,1.0)
+    probs = tf.math.maximum(probs,0)
+    probs = tf.math.minimum(probs,1.0)
 
     # Deal with any NaNs that may have come out of the model
     #mask = tf.math.logical_not(tf.math.is_nan(tf.reduce_max(tf.math.real(probs), axis=[1])))
@@ -173,11 +180,11 @@ def fusion_mse_loss(y_true, y_pred):
     y_pred_ro_results = tf.cast(y_pred, tf.float32)
 
     # Compute a regularization term that penalizes large trajectory deviations
-    reg_err = tf.keras.metrics.mean_squared_error(tf.math.reduce_std(y_pred_ro_results[:,:,6], axis=0), 0.0)
-    reg_mult = 0.01
+    #reg_err = tf.keras.metrics.mean_squared_error(tf.math.reduce_std(y_pred_ro_results[:,:,6], axis=0), 0.0)
+    #reg_mult = 0.01
 
     #return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true_ro_results[0,...], y_pred_ro_results))
-    return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true_ro_results[0,...], tf.reduce_mean(y_pred_ro_results[:,:,:6], axis=0))) + reg_mult*reg_err
+    return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true_ro_results[...,:6], y_pred_ro_results[:,:,:6])) #+ reg_mult*reg_err
 
 def build_fusion_model(grp_size, seq_len, num_features, lstm_size, num_params):
     model = tf.keras.Sequential()
@@ -233,5 +240,31 @@ def build_stacked_model(grp_size, seq_len, num_features, lstm_size, rho0, deltat
     
     return model
 
-def compile_model(model, loss_func, optimizer='adam'):
-    model.compile(loss=loss_func, optimizer=optimizer)
+def param_metric(y_true, y_pred):
+    return tf.sqrt(tf.keras.metrics.mean_squared_error(y_true[:,-1,6], y_pred[:,-1,6]))
+
+def max_activation(x, max_val=math.sqrt(50.0)):
+  return tf.keras.activations.sigmoid(x/100.0)*max_val
+
+def build_fusion_ae_model(seq_len, num_features, encoder_sizes, num_params, rho0, deltat):
+    model = tf.keras.Sequential()
+    
+    model.add(tf.keras.layers.Input(shape=(seq_len)))
+
+    for size in encoder_sizes:
+      model.add(tf.keras.layers.Dense(size, activation='relu'))
+
+    model.add(tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: max_activation(x, max_val=15)))
+
+    model.add(tf.keras.layers.RepeatVector(seq_len))
+    
+    # Add the physical RNN layer
+    model.add(tf.keras.layers.RNN(EulerRNNCell(maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0)),
+                                  stateful=False,
+                                  return_sequences=True,
+                                  name='physical_layer'))
+    
+    return model
+
+def compile_model(model, loss_func, optimizer='adam', metrics=[]):
+    model.compile(loss=loss_func, optimizer=optimizer, metrics=metrics)
