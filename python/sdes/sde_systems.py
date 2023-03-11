@@ -1,6 +1,14 @@
 import math
+import os
+import sys
 import numpy as np
 import tensorflow as tf
+
+current = os.path.dirname(os.path.realpath(__file__))
+parent = os.path.dirname(current)
+sys.path.append(os.path.join(parent, 'tns'))
+
+import operations
 
 def paulis():
     return [ np.array([[0.0, 1.0],[1.0, 0.0]], dtype=np.cdouble), np.array([[0.0, -1.0j],[1.0j, 0.0]], dtype=np.cdouble), np.array([[1.0, 0.0],[0.0, -1.0]], dtype=np.cdouble) ]
@@ -82,13 +90,7 @@ class Geometric2DSDE:
         num_traj = tf.shape(x)[0]
         return tf.tile(tf.expand_dims(tf.stack([tf.constant([[1.0, 0.0],[0.0, 0.0]])*p[2],tf.constant([[0.0, 0.0],[0.0, 1.0]])*p[3]]), axis=0), [num_traj,1,1,1])
 
-class GenoisSDE:
-    '''
-    params = [Omega, Gamma, eta] when solving for rho
-           = [Omega, Gamma, eta, rho_vec] when solving for I/Q
-    '''
-
-    def supd_herm(l,rho):
+def supd_herm(l,rho):
         '''
         NB: It is assumed that l is Hermetian as conjugate transposes are omitted
         '''
@@ -97,27 +99,33 @@ class GenoisSDE:
         d2 = 0.5*(tf.matmul(l2,rho) + tf.matmul(rho,l2))
         return d1 - d2
 
-    def suph_herm(l,rho):
-        '''
-        NB: It is assumed that l is Hermetian as conjugate transposes are omitted
-        '''
-        h1 = tf.matmul(l,rho) + tf.matmul(rho,l)
-        h2 = tf.reshape(tf.linalg.trace(tf.matmul(rho,2.0*l)), [-1,1,1])*rho
-        return h1 - h2
+def suph_herm(l,rho):
+    '''
+    NB: It is assumed that l is Hermetian as conjugate transposes are omitted
+    '''
+    h1 = tf.matmul(l,rho) + tf.matmul(rho,l)
+    h2 = tf.reshape(tf.linalg.trace(tf.matmul(rho,2.0*l)), [-1,1,1])*rho
+    return h1 - h2
 
-    def suph_herm_p(l,rho):
-        '''
-        NB: It is assumed that l is Hermetian as conjugate transposes are omitted
-        '''
-        # return shape = [num_traj,d=4,d=4]
-        t1 = tf.map_fn(lambda x: kron(x[0],x[1]), [tf.ones(rho.shape)*l,rho], fn_output_signature=tf.TensorSpec(shape=[4,4]))
-        t2 = tf.map_fn(lambda x: kron(x[0],x[1]), [rho,tf.ones(rho.shape)*l], fn_output_signature=tf.TensorSpec(shape=[4,4]))
+def suph_herm_p(l,rho):
+    '''
+    NB: It is assumed that l is Hermetian as conjugate transposes are omitted
+    '''
+    # return shape = [num_traj,d,d]
+    t1 = tf.map_fn(lambda x: kron(x[0],x[1]), [tf.ones(rho.shape)*l,rho], fn_output_signature=tf.TensorSpec(shape=[4,4]))
+    t2 = tf.map_fn(lambda x: kron(x[0],x[1]), [rho,tf.ones(rho.shape)*l], fn_output_signature=tf.TensorSpec(shape=[4,4]))
 
-        lvec = tf.reshape(l,[4])*tf.ones([rho.shape[0],1])
-        rho_vec = tf.reshape(rho, [-1,4])
-        t3 = tf.tensordot(rho_vec, lvec, axes=0) + tf.linalg.diag(tf.matvec(tf.expand_dims(lvec,1),rho_vec)*tf.ones([1,4]))
+    lvec = tf.reshape(l,[4])*tf.ones([rho.shape[0],1])
+    rho_vec = tf.reshape(rho, [-1,4])
+    t3 = tf.tensordot(rho_vec, lvec, axes=0) + tf.linalg.diag(tf.matvec(tf.expand_dims(lvec,1),rho_vec)*tf.ones([1,4]))
 
-        return t1 + t2 - 2.0*t3
+    return t1 + t2 - 2.0*t3
+
+class GenoisSDE:
+    '''
+    params = [Omega, Gamma, eta] when solving for rho
+           = [Omega, Gamma, eta, rho_vec] when solving for I/Q
+    '''
 
     # SDE functions for the density operator
     def a0(t,x,p):
@@ -128,15 +136,15 @@ class GenoisSDE:
         rho = unwrap_x_to_rho(x[...,0], 2)
         sx, _, sz = paulis()
         ham = -0.5j*tf.cast(p[0], tf.complex128)*(tf.matmul(sx,rho) - tf.matmul(rho,sx))
-        supd = GenoisSDE.supd_herm(tf.pow(0.5*tf.cast(p[1], tf.complex128),0.5)*np.array(sz), rho)
+        supd = supd_herm(tf.pow(0.5*tf.cast(p[1], tf.complex128),0.5)*np.array(sz), rho)
 
         return wrap_rho_to_x(ham + supd, 2)[:,:,tf.newaxis]
 
     def b0(t,x,p):
         rho = unwrap_x_to_rho(x[...,0], 2)
         _, _, sz = paulis()
-        hi = tf.reshape(wrap_rho_to_x(GenoisSDE.suph_herm(tf.pow(0.5*tf.cast(p[1], tf.complex128),0.5)*np.array(sz), rho), 2), [-1,3,1])
-        hq = tf.reshape(wrap_rho_to_x(GenoisSDE.suph_herm(-1.0j*tf.pow(0.5*tf.cast(p[1], tf.complex128),0.5)*np.array(sz), rho), 2), [-1,3,1])
+        hi = tf.reshape(wrap_rho_to_x(suph_herm(tf.pow(0.5*tf.cast(p[1], tf.complex128),0.5)*np.array(sz), rho), 2), [-1,3,1])
+        hq = tf.reshape(wrap_rho_to_x(suph_herm(-1.0j*tf.pow(0.5*tf.cast(p[1], tf.complex128),0.5)*np.array(sz), rho), 2), [-1,3,1])
 
         return tf.pow(0.5*tf.cast(p[2], tf.complex128),0.5)*tf.concat([hi, hq], axis=2)
 
@@ -144,8 +152,8 @@ class GenoisSDE:
         # return shape = [num_traj,m=2,d=4,d=4]
         rho = unwrap_x_to_rho(x[...,0], 2)
         _, _, sz = paulis()
-        hi = GenoisSDE.suph_herm_p(tf.pow(0.5*p[1],0.5)*np.array(sz), rho)
-        hq = GenoisSDE.suph_herm_p(-1.0j*tf.pow(0.5*p[1],0.5)*np.array(sz), rho)
+        hi = suph_herm_p(tf.pow(0.5*p[1],0.5)*np.array(sz), rho)
+        hq = suph_herm_p(-1.0j*tf.pow(0.5*p[1],0.5)*np.array(sz), rho)
         hi = tf.expand_dims(hi,1)
         hq = tf.expand_dims(hq,1)
         return tf.gather(tf.gather(tf.pow(0.5*p[2],0.5)*tf.concat(hi, hq, axis=1), [0,1,3], axis=2), [0,1,3], axis=3)
@@ -164,11 +172,11 @@ class GenoisSDE:
         sx_rho = tf.matmul(sx,rho)
         rho_sx = tf.matmul(rho,sx)
         ham = pten*(sx_rho - rho_sx)
-        #supd = GenoisSDE.supd_herm(tf.pow(0.5*tf.cast(p[:,1,tf.newaxis,tf.newaxis], tf.complex128),0.5)*np.array(sz), rho)
+        #supd = supd_herm(tf.pow(0.5*tf.cast(p[:,1,tf.newaxis,tf.newaxis], tf.complex128),0.5)*np.array(sz), rho)
         pten1 = tf.cast(tf.pow(0.5*tf.dtypes.complex(p[:,1], 0.0),0.5), dtype=tf.complex128)
         pten1 = tf.expand_dims(pten1, axis=1)
         pten1 = tf.expand_dims(pten1, axis=1)
-        supd = GenoisSDE.supd_herm(pten1*np.array(sz), rho)
+        supd = supd_herm(pten1*np.array(sz), rho)
 
         return wrap_rho_to_x(ham + supd, 2)[:,:,tf.newaxis]
 
@@ -177,13 +185,13 @@ class GenoisSDE:
         if tf.rank(p) == 1:
             p = p[tf.newaxis,:]
         _, _, sz = paulis()
-        #hi = tf.reshape(wrap_rho_to_x(GenoisSDE.suph_herm(tf.pow(0.5*tf.cast(p[:,1,tf.newaxis,tf.newaxis], tf.complex128),0.5)*np.array(sz), rho), 2), [-1,3,1])
-        #hq = tf.reshape(wrap_rho_to_x(GenoisSDE.suph_herm(-1.0j*tf.pow(0.5*tf.cast(p[:,1,tf.newaxis,tf.newaxis], tf.complex128),0.5)*np.array(sz), rho), 2), [-1,3,1])
+        #hi = tf.reshape(wrap_rho_to_x(suph_herm(tf.pow(0.5*tf.cast(p[:,1,tf.newaxis,tf.newaxis], tf.complex128),0.5)*np.array(sz), rho), 2), [-1,3,1])
+        #hq = tf.reshape(wrap_rho_to_x(suph_herm(-1.0j*tf.pow(0.5*tf.cast(p[:,1,tf.newaxis,tf.newaxis], tf.complex128),0.5)*np.array(sz), rho), 2), [-1,3,1])
         pten = tf.cast(tf.pow(0.5*tf.dtypes.complex(p[:,1], 0.0),0.5), dtype=tf.complex128)
         pten = tf.expand_dims(pten, axis=1)
         pten = tf.expand_dims(pten, axis=1)
-        hi = tf.reshape(wrap_rho_to_x(GenoisSDE.suph_herm(pten*np.array(sz), rho), 2), [-1,3,1])
-        hq = tf.reshape(wrap_rho_to_x(GenoisSDE.suph_herm(-1.0j*pten*np.array(sz), rho), 2), [-1,3,1])
+        hi = tf.reshape(wrap_rho_to_x(suph_herm(pten*np.array(sz), rho), 2), [-1,3,1])
+        hq = tf.reshape(wrap_rho_to_x(suph_herm(-1.0j*pten*np.array(sz), rho), 2), [-1,3,1])
 
         pten2 = tf.cast(tf.pow(0.5*tf.dtypes.complex(p[:,2], 0.0),0.5), dtype=tf.complex128)
         pten2 = tf.expand_dims(pten2, axis=1)
@@ -196,8 +204,8 @@ class GenoisSDE:
         if tf.rank(p) == 1:
             p = p[tf.newaxis,:]
         _, _, sz = paulis()
-        hi = GenoisSDE.suph_herm_p(tf.pow(0.5*p[:,1,tf.newaxis,tf.newaxis],0.5)*np.array(sz), rho)
-        hq = GenoisSDE.suph_herm_p(-1.0j*tf.pow(0.5*p[:,1,tf.newaxis,tf.newaxis],0.5)*np.array(sz), rho)
+        hi = suph_herm_p(tf.pow(0.5*p[:,1,tf.newaxis,tf.newaxis],0.5)*np.array(sz), rho)
+        hq = suph_herm_p(-1.0j*tf.pow(0.5*p[:,1,tf.newaxis,tf.newaxis],0.5)*np.array(sz), rho)
         hi = tf.expand_dims(hi,1)
         hq = tf.expand_dims(hq,1)
         return tf.gather(tf.gather(tf.pow(0.5*p[:,2,tf.newaxis,tf.newaxis],0.5)*tf.concat(hi, hq, axis=1), [0,1,3], axis=2), [0,1,3], axis=3)
@@ -239,3 +247,111 @@ class GenoisTrajSDE:
 
     def mqbp(self,t,x,p):
         return tf.zeros(tf.shape(x), dtype=x.dtype)
+
+class RabiWeakMeasSDE:
+    '''
+    Equations for the stochastic master equation
+
+    drho(t) = -i[H,rho] dt + sum_j=1^n kappa D[Z_j](rho) dt 
+                           + sum_j=1^n sqrt(kappa*eta/2) H[Z_j](rho) dW_t^(j)
+    
+    where
+    
+    H = sum_j=1^n Omega/2 X_j 
+    is the Rabi Hamiltonian
+    
+    D[L](rho) = L rho L^dagger -(1/2)(L^dagger L rho + rho L^dagger L)
+    is the lindblad superoperator
+    
+    H[L](rho) = L rho + rho L^dagger - rho Tr[rho (L + L^dagger)]
+    is the measurement superoperator describing the backction of the weak measurement
+
+    For all a, b, bp,
+    params = [Omega, kappa, eta]
+    '''
+
+    def a(t,x,p):
+        '''
+        x - shape = [num_traj,d=pdim(pdim+1)/2,1] Upper triangle of rho where pdim = 2^n
+        return shape = [num_traj,d,1]
+        '''
+        pdim = tf.cast(-0.5 + tf.math.sqrt(0.25 + 2.0*tf.cast(tf.shape(x)[1], dtype=tf.float32)), dtype=tf.int32)
+        n = np.cast(np.log2(pdim), np.int)
+
+        rho = unwrap_x_to_rho(x[...,0], pdim)
+        
+        if tf.rank(p) == 1:
+            p = p[tf.newaxis,:]
+
+        x_out = tf.zeros(tf.shape(x), x.dtype)
+        for j in range(n):
+            _, _, szj, sxj, _ = operations.prod_ops(j, 2, n)
+
+            #ham = -0.5j*tf.cast(p[:,0,tf.newaxis,tf.newaxis], tf.complex128)*(tf.matmul(sxj,rho) - tf.matmul(rho,sxj))
+            pten = -0.5j*tf.cast(tf.expand_dims(tf.dtypes.complex(p[:,0], 0.0), axis=1), dtype=tf.complex128)
+            pten = tf.expand_dims(pten, axis=1)
+            sx_rho = tf.matmul(sxj,rho)
+            rho_sx = tf.matmul(rho,sxj)
+            ham = pten*(sx_rho - rho_sx)
+
+            #supd = supd_herm(tf.pow(0.5*tf.cast(p[:,1,tf.newaxis,tf.newaxis], tf.complex128),0.5)*szj, rho)
+            pten1 = tf.cast(tf.pow(0.5*tf.dtypes.complex(p[:,1], 0.0),0.5), dtype=tf.complex128)
+            pten1 = tf.expand_dims(pten1, axis=1)
+            pten1 = tf.expand_dims(pten1, axis=1)
+            supd = supd_herm(pten1*szj, rho)
+
+            x_out = x_out + wrap_rho_to_x(ham + supd, pdim)[:,:,tf.newaxis]
+
+        return x_out
+
+    def b(t,x,p):
+        '''
+        x - shape = [num_traj,d=pdim(pdim+1)/2,1] Upper triangle of rho where pdim = 2^n
+        return shape = [num_traj,d,m]
+        '''
+        pdim = tf.cast(-0.5 + tf.math.sqrt(0.25 + 2.0*tf.cast(tf.shape(x)[1], dtype=tf.float32)), dtype=tf.int32)
+        n = np.cast(np.log2(pdim), np.int)
+
+        rho = unwrap_x_to_rho(x[...,0], pdim)
+
+        if tf.rank(p) == 1:
+            p = p[tf.newaxis,:]
+
+        pten = tf.cast(tf.pow(0.5*tf.dtypes.complex(p[:,1], 0.0),0.5), dtype=tf.complex128)
+        pten = tf.expand_dims(pten, axis=1)
+        pten = tf.expand_dims(pten, axis=1)
+
+        pten2 = tf.cast(tf.pow(0.5*tf.dtypes.complex(p[:,2], 0.0),0.5), dtype=tf.complex128)
+        pten2 = tf.expand_dims(pten2, axis=1)
+        pten2 = tf.expand_dims(pten2, axis=1)
+
+        x_out = tf.zeros(tf.shape(x), x.dtype)
+        for j in range(n):
+            _, _, szj, _, _ = operations.prod_ops(j, 2, n)
+
+            #hi = tf.reshape(wrap_rho_to_x(suph_herm(tf.pow(0.5*tf.cast(p[:,1,tf.newaxis,tf.newaxis], tf.complex128),0.5)*szj, rho), 2), [-1,3,1])
+            hi = tf.reshape(wrap_rho_to_x(suph_herm(pten*szj, rho), 2), [-1,tf.shape(x)[1],1])
+
+            if j == 0:
+                x_out = pten2*hi
+            else:
+                x_out = pten2*tf.concat([x_out, hi], axis=2)
+
+        return x_out
+
+    def bp(t,x,p):
+        # return shape = [num_traj,m,d,d]
+
+        raise Exception('bp for RabiWeakMeasSDE not yet implemented')
+
+        # TODO - ND implementation
+        # 1D implementation:
+        # rho = unwrap_x_to_rho(x[...,0], 2)
+        # if tf.rank(p) == 1:
+        #     p = p[tf.newaxis,:]
+        # _, _, sz = paulis()
+        # hi = suph_herm_p(tf.pow(0.5*p[:,1,tf.newaxis,tf.newaxis],0.5)*np.array(sz), rho)
+        # hq = suph_herm_p(-1.0j*tf.pow(0.5*p[:,1,tf.newaxis,tf.newaxis],0.5)*np.array(sz), rho)
+        # hi = tf.expand_dims(hi,1)
+        # hq = tf.expand_dims(hq,1)
+        # return tf.gather(tf.gather(tf.pow(0.5*p[:,2,tf.newaxis,tf.newaxis],0.5)*tf.concat(hi, hq, axis=1), [0,1,3], axis=2), [0,1,3], axis=3)
