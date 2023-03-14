@@ -76,6 +76,113 @@ def get_probs(rhovec):
 
   return tf.stack([px, 1-px, py, 1-py, pz, 1-pz], axis=2)
 
+def run_model_2d(params, num_traj, mint=0.0, maxt=1.0, deltat=2**(-8), comp_i=True):
+  #rho0 = tf.reshape(tf.ones([num_traj,1,1], dtype=tf.complex128)*tf.constant([[1.0,0],[0,0]], dtype=tf.complex128), [num_traj,4,1])
+  #rho0 = tf.reshape(tf.ones([num_traj,1,1], dtype=tf.complex128)*tf.constant([[0.5,0.5],[0.5,0.5]], dtype=tf.complex128), [num_traj,4,1])
+  x0 = tf.reshape(tf.ones([num_traj,1,1], dtype=tf.complex128)*tf.constant([1.0,0,0,0,0,0,0,0,0,0], dtype=tf.complex128), [num_traj,10,1])
+
+  d = 10
+  m = 2
+
+  a = sde_systems.RabiWeakMeasSDE.a
+  b = sde_systems.RabiWeakMeasSDE.b
+  #bp = sde_systems.RabiWeakMeasSDE.bp
+
+  tvec = np.arange(mint,maxt,deltat)
+  wvec = tf.cast(tf.random.normal(stddev=math.sqrt(deltat), shape=[num_traj,tvec.shape[0]-1,m,1]), dtype=x0.dtype)
+  emod = sde_solve.EulerMultiDModel(mint, maxt, deltat, a, b, d, m, len(params), params, [True, True, True, True], create_params=False)
+
+  xvec = emod(x0, num_traj, wvec, params)
+  rhovec = sde_systems.unwrap_x_to_rho(tf.reshape(tf.transpose(xvec, perm=[0,2,1]), [-1,10]), 4)
+  rhovec = tf.reshape(rhovec, [num_traj,-1,4,4])
+
+  tvec = emod.tvec
+
+  # Simulate the voltage record
+  if comp_i:
+    traj_sdes1 = sde_systems.RabiWeakMeasTrajSDE(rhovec, deltat, 0)
+    ai = traj_sdes1.mia
+    bi = traj_sdes1.mib
+    emod_i = sde_solve.EulerMultiDModel(mint, maxt, deltat, ai, bi, 1, 1, len(params), params, [True, True, True, True])
+    ivec1 = emod_i(tf.zeros(1, dtype=tf.complex128), num_traj, wvec[:,:,0,:][:,:,tf.newaxis,:])
+
+    traj_sdes2 = sde_systems.RabiWeakMeasTrajSDE(rhovec, deltat, 1)
+    ai = traj_sdes2.mia
+    bi = traj_sdes2.mib
+    emod_i = sde_solve.EulerMultiDModel(mint, maxt, deltat, ai, bi, 1, 1, len(params), params, [True, True, True, True])
+    ivec2 = emod_i(tf.zeros(1, dtype=tf.complex128), num_traj, wvec[:,:,1,:][:,:,tf.newaxis,:])
+
+    ivec = tf.transpose(tf.concat([ivec1, ivec2], axis=1), perm=[0,2,1])
+  else:
+    ivec = None
+
+  return rhovec, ivec, wvec, tvec
+
+def calc_op_probs(rho, op1, op2):
+  '''
+  Takes a batch of density operators and returns probabilities of each combination
+  of measurement outcomes of the two passed in operators for subsystems A and B
+  such that rho \in B(H), H = A x B, dim(A) = dim(B) = sqrt(pdim), and
+  pdim = dim(H)
+
+  Input:
+  rho - shape = [num_traj, num_times, pdim, pdim] batched density operators
+  op1, op2 - shape = [sqrt(pdim), sqrt(pdim)] operators on A and B subsystems
+
+  Output:
+  vals - shape = [pdim] eigenvalue of op1 x op2 where
+         vals[i*pdim + j]= lambda1_i*lambda2_j and the lambdak_i are in
+         descending order. E.g. for a 2 qubit system this order is
+         (++), (+-), (-+), (--)
+  probs - shape = [num_traj, num_times, pdim] probabilities corresponding to
+          the above values
+  '''
+
+  # Get eigenvalues/vectors
+  evals1, evecs1 = np.linalg.eig(op1)
+  eidx1 = np.flip(np.argsort(evals1))
+  evals2, evecs2 = np.linalg.eig(op2)
+  eidx2 = np.flip(np.argsort(evals2))
+
+  # Calculate probabilities
+  vals = None
+  probs = None
+  for idx1 in eidx1:
+    for idx2 in eidx2:
+      # Get the eigenvector of the tensor product of operators with a Kronecker product
+      evec = tf.reshape(tf.tensordot(evecs1[:,idx1],evecs2[:,idx2],0), [-1])
+
+      # Get the projection operator onto the eigenvector and calculate its
+      # expectation to get the probability
+      op = tf.tensordot(evec, tf.math.conj(evec), 0)
+      op_probs = sde_systems.calc_op_exp(rho, op)[:,:,tf.newaxis]
+
+      if vals is None:
+        vals = evals1[idx1]*evals2[idx2]
+        probs = op_probs
+      else:
+        vals = np.append(vals, evals1[idx1]*evals2[idx2])
+        probs = tf.concat([probs, op_probs], axis=2)
+
+  return vals, probs
+
+def get_2d_probs(rhovec):
+  sx, sy, sz = sde_systems.paulis()
+
+  ops = [sx, sy, sz]
+
+  probs = None
+  for op1 in ops:
+    for op2 in ops:
+      vals, probvec = calc_op_probs(rhovec, op1, op2)
+
+      if probs is None:
+        probs = probvec
+      else:
+        probs = tf.concat([probs, probvec], axis=2)
+
+  return probs
+
 class EulerRNNCell(tf.keras.layers.Layer):
   ''' An RNN cell for taking a single Euler step
   '''

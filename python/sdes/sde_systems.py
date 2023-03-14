@@ -20,6 +20,18 @@ def kron(a,b):
     c = tf.transpose(cp, perm=[0,2,1,3])
     return tf.reshape(c, [a.shape[0]*b.shape[0], a.shape[1]*b.shape[1]])
 
+def calc_op_exp(rho,o):
+    '''
+    Input:
+    rho: shape = [num_traj,num_times,pdim,pdim] set of density operators
+    o: shape = [pdim,pdim] Hermetian operator to take expectation values of
+
+    Returns:
+    exp_o: shape = [num_traj,num_times] operator expectations
+    '''
+
+    return tf.linalg.trace(tf.matmul(rho, o))
+
 def calc_exp(x,o):
     '''
     Input:
@@ -349,7 +361,7 @@ class RabiWeakMeasSDE:
             _, _, szj, _, _ = [2.0*sm for sm in operations.prod_ops(j, 2, n)]
 
             #hi = tf.reshape(wrap_rho_to_x(suph_herm(tf.pow(0.5*tf.cast(p[:,1,tf.newaxis,tf.newaxis], tf.complex128),0.5)*szj, rho), 2), [-1,3,1])
-            hi = tf.reshape(wrap_rho_to_x(suph_herm(pten*szj, rho), 2), [-1,tf.shape(x)[1],1])
+            hi = tf.reshape(wrap_rho_to_x(suph_herm(pten*szj, rho), pdim), [-1,tf.shape(x)[1],1])
 
             if j == 0:
                 x_out = pten2*hi
@@ -374,3 +386,43 @@ class RabiWeakMeasSDE:
         # hi = tf.expand_dims(hi,1)
         # hq = tf.expand_dims(hq,1)
         # return tf.gather(tf.gather(tf.pow(0.5*p[:,2,tf.newaxis,tf.newaxis],0.5)*tf.concat(hi, hq, axis=1), [0,1,3], axis=2), [0,1,3], axis=3)
+
+class RabiWeakMeasTrajSDE:
+    def __init__(self, rhovec, deltat, qidx):
+        '''
+        Equations for multi-qubit system voltage records
+
+        rhovec - shape = [num_traj, num_times, pdim, pdim] vectorized density operators
+        deltat - time spacing between each time index
+        qidx - zero based qubit index
+        '''
+        self.pdim = tf.shape(rhovec)[2]
+        self.n = int(np.math.log2(self.pdim))
+        self.rhovec = rhovec
+        self.deltat = deltat
+        self.qidx = qidx
+
+    def get_rho(self, t):
+        tidx = np.rint(t/self.deltat).astype(int)
+        return self.rhovec[:,tidx,:,:]
+    
+    def mia0(self,t,x,p):
+        rho = self.get_rho(t)
+        _, _, sz = paulis()
+        l = tf.cast(tf.pow(0.5*p[1],0.5)*np.array(sz), dtype=rho.dtype)
+        return tf.cast(tf.pow(0.5*p[2],0.5), dtype=rho.dtype)*tf.reshape(tf.linalg.trace(tf.matmul(rho,2.0*l)), [-1,1,1])
+
+    def mia(self,t,x,p):
+        rho = self.get_rho(t)
+        if tf.rank(p) == 1:
+            p = p[tf.newaxis,:]
+        _, _, sz = paulis()
+        szj = tf.cast(operations.local_op_to_prod(sz, self.qidx, self.n), dtype=p.dtype)
+        l = tf.cast(tf.pow(0.5*p[:,1,tf.newaxis,tf.newaxis],0.5)*szj, dtype=rho.dtype)
+        return tf.cast(tf.pow(0.5*p[:,2,tf.newaxis,tf.newaxis],0.5), dtype=rho.dtype)*tf.reshape(tf.linalg.trace(tf.matmul(rho,2.0*l)), [-1,1,1])
+
+    def mib(self,t,x,p):
+        return tf.ones(tf.shape(x), dtype=x.dtype)
+
+    def mibp(self,t,x,p):
+        return tf.zeros(tf.shape(x), dtype=x.dtype)
