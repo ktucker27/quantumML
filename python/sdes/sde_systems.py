@@ -267,7 +267,8 @@ class RabiWeakMeasSDE:
     is the measurement superoperator describing the backction of the weak measurement
 
     For all a, b, bp,
-    params = [Omega, kappa, eta]
+    params = [Omega, kappa, eta, eps_0, eps_1, ..., eps_k]
+    where k can be between 0 and n-1 and eps_j indicates crosstalk between qubits j and j+1
     '''
 
     def a(t,x,p):
@@ -275,24 +276,41 @@ class RabiWeakMeasSDE:
         x - shape = [num_traj,d=pdim(pdim+1)/2,1] Upper triangle of rho where pdim = 2^n
         return shape = [num_traj,d,1]
         '''
-        pdim = tf.cast(-0.5 + tf.math.sqrt(0.25 + 2.0*tf.cast(tf.shape(x)[1], dtype=tf.float32)), dtype=tf.int32)
-        n = np.cast(np.log2(pdim), np.int)
+        #pdim = tf.cast(-0.5 + tf.math.sqrt(0.25 + 2.0*tf.cast(tf.shape(x)[1], dtype=tf.float32)), dtype=tf.int32)
+        pdim = int(-0.5 + np.sqrt(0.25 + 2.0*tf.cast(tf.shape(x)[1], dtype=tf.float32)))
+        n = np.log2(pdim).astype(int)
 
         rho = unwrap_x_to_rho(x[...,0], pdim)
         
         if tf.rank(p) == 1:
             p = p[tf.newaxis,:]
 
-        x_out = tf.zeros(tf.shape(x), x.dtype)
+        ham = tf.zeros(tf.shape(rho), rho.dtype)
+
         for j in range(n):
-            _, _, szj, sxj, _ = operations.prod_ops(j, 2, n)
+            _, _, _, sxj, _ = [2.0*sm for sm in operations.prod_ops(j, 2, n)]
 
             #ham = -0.5j*tf.cast(p[:,0,tf.newaxis,tf.newaxis], tf.complex128)*(tf.matmul(sxj,rho) - tf.matmul(rho,sxj))
             pten = -0.5j*tf.cast(tf.expand_dims(tf.dtypes.complex(p[:,0], 0.0), axis=1), dtype=tf.complex128)
             pten = tf.expand_dims(pten, axis=1)
             sx_rho = tf.matmul(sxj,rho)
             rho_sx = tf.matmul(rho,sxj)
-            ham = pten*(sx_rho - rho_sx)
+            ham = ham + pten*(sx_rho - rho_sx)
+
+        # Add crosstalk terms
+        assert(tf.shape(p)[1] - 3 <= n-1)
+        for epsidx in range(3,tf.shape(p)[1]):
+            _, _, szj, _, _ = [2.0*sm for sm in operations.prod_ops(epsidx - 3, 2, n)]
+            _, _, szjp1, _, _ = [2.0*sm for sm in operations.prod_ops(epsidx - 3 + 1, 2, n)]
+
+            pten = tf.cast(tf.expand_dims(tf.dtypes.complex(p[:,epsidx], 0.0), axis=1), dtype=tf.complex128)
+            pten = tf.expand_dims(pten, axis=1)
+            ham = ham + pten*tf.matmul(szj, szjp1)
+
+        x_out = wrap_rho_to_x(ham, pdim)[:,:,tf.newaxis]
+        
+        for j in range(n):
+            _, _, szj, sxj, _ = [2.0*sm for sm in operations.prod_ops(j, 2, n)]
 
             #supd = supd_herm(tf.pow(0.5*tf.cast(p[:,1,tf.newaxis,tf.newaxis], tf.complex128),0.5)*szj, rho)
             pten1 = tf.cast(tf.pow(0.5*tf.dtypes.complex(p[:,1], 0.0),0.5), dtype=tf.complex128)
@@ -300,7 +318,7 @@ class RabiWeakMeasSDE:
             pten1 = tf.expand_dims(pten1, axis=1)
             supd = supd_herm(pten1*szj, rho)
 
-            x_out = x_out + wrap_rho_to_x(ham + supd, pdim)[:,:,tf.newaxis]
+            x_out = x_out + wrap_rho_to_x(supd, pdim)[:,:,tf.newaxis]
 
         return x_out
 
@@ -309,8 +327,9 @@ class RabiWeakMeasSDE:
         x - shape = [num_traj,d=pdim(pdim+1)/2,1] Upper triangle of rho where pdim = 2^n
         return shape = [num_traj,d,m]
         '''
-        pdim = tf.cast(-0.5 + tf.math.sqrt(0.25 + 2.0*tf.cast(tf.shape(x)[1], dtype=tf.float32)), dtype=tf.int32)
-        n = np.cast(np.log2(pdim), np.int)
+        #pdim = tf.cast(-0.5 + tf.math.sqrt(0.25 + 2.0*tf.cast(tf.shape(x)[1], dtype=tf.float32)), dtype=tf.int32)
+        pdim = int(-0.5 + np.sqrt(0.25 + 2.0*tf.cast(tf.shape(x)[1], dtype=tf.float32)))
+        n = np.log2(pdim).astype(int)
 
         rho = unwrap_x_to_rho(x[...,0], pdim)
 
@@ -327,7 +346,7 @@ class RabiWeakMeasSDE:
 
         x_out = tf.zeros(tf.shape(x), x.dtype)
         for j in range(n):
-            _, _, szj, _, _ = operations.prod_ops(j, 2, n)
+            _, _, szj, _, _ = [2.0*sm for sm in operations.prod_ops(j, 2, n)]
 
             #hi = tf.reshape(wrap_rho_to_x(suph_herm(tf.pow(0.5*tf.cast(p[:,1,tf.newaxis,tf.newaxis], tf.complex128),0.5)*szj, rho), 2), [-1,3,1])
             hi = tf.reshape(wrap_rho_to_x(suph_herm(pten*szj, rho), 2), [-1,tf.shape(x)[1],1])
