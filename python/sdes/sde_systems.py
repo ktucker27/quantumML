@@ -3,6 +3,7 @@ import os
 import sys
 import numpy as np
 import tensorflow as tf
+import scipy
 
 current = os.path.dirname(os.path.realpath(__file__))
 parent = os.path.dirname(current)
@@ -46,6 +47,88 @@ def calc_exp(x,o):
     rho = tf.reshape(x, [-1,tf.shape(x)[1],2,2])
 
     return tf.linalg.trace(tf.matmul(rho, o))
+
+def calc_op_probs(rho, op1, op2):
+  '''
+  Takes a batch of density operators and returns probabilities of each combination
+  of measurement outcomes of the two passed in operators for subsystems A and B
+  such that rho \in B(H), H = A x B, dim(A) = dim(B) = sqrt(pdim), and
+  pdim = dim(H)
+
+  Input:
+  rho - shape = [num_traj, num_times, pdim, pdim] batched density operators
+  op1, op2 - shape = [sqrt(pdim), sqrt(pdim)] operators on A and B subsystems
+
+  Output:
+  vals - shape = [pdim] eigenvalue of op1 x op2 where
+         vals[i*pdim + j]= lambda1_i*lambda2_j and the lambdak_i are in
+         descending order. E.g. for a 2 qubit system this order is
+         (++), (+-), (-+), (--)
+  probs - shape = [num_traj, num_times, pdim] probabilities corresponding to
+          the above values
+  '''
+
+  # Get eigenvalues/vectors
+  evals1, evecs1 = np.linalg.eig(op1)
+  eidx1 = np.flip(np.argsort(evals1))
+  evals2, evecs2 = np.linalg.eig(op2)
+  eidx2 = np.flip(np.argsort(evals2))
+
+  # Calculate probabilities
+  vals = None
+  probs = None
+  for idx1 in eidx1:
+    for idx2 in eidx2:
+      # Get the eigenvector of the tensor product of operators with a Kronecker product
+      evec = tf.reshape(tf.tensordot(evecs1[:,idx1],evecs2[:,idx2],0), [-1])
+
+      # Get the projection operator onto the eigenvector and calculate its
+      # expectation to get the probability
+      op = tf.tensordot(evec, tf.math.conj(evec), 0)
+      op_probs = calc_op_exp(rho, op)[:,:,tf.newaxis]
+
+      if vals is None:
+        vals = evals1[idx1]*evals2[idx2]
+        probs = op_probs
+      else:
+        vals = np.append(vals, evals1[idx1]*evals2[idx2])
+        probs = tf.concat([probs, op_probs], axis=2)
+
+  return vals, probs
+
+def get_2d_probs(rhovec):
+  sx, sy, sz = paulis()
+
+  ops = [sx, sy, sz]
+
+  probs = None
+  for op1 in ops:
+    for op2 in ops:
+      _, probvec = calc_op_probs(rhovec, op1, op2)
+
+      if probs is None:
+        probs = probvec
+      else:
+        probs = tf.concat([probs, probvec], axis=2)
+
+  return probs
+
+def get_2d_probs_truth(liouv, rho0, deltat, maxt):
+    rho0vec = np.reshape(rho0, [-1])
+
+    dtmat = scipy.linalg.expm(liouv*deltat)
+
+    rhovec_truth = rho0[:,:,np.newaxis]
+    rhotvec = rho0vec
+    for t in np.arange(deltat, maxt + 0.5*deltat, deltat):
+        rhotvec = np.matmul(dtmat, rhotvec)
+        rhot = np.reshape(rhotvec, [4,4])[:,:,np.newaxis]
+        rhovec_truth = np.concatenate([rhovec_truth, rhot], axis=2)
+    rhovec_truth = np.transpose(rhovec_truth, axes=[2,0,1])
+
+    probs_truth = get_2d_probs(rhovec_truth[np.newaxis,...])[0,...]
+
+    return rhovec_truth, probs_truth
 
 def unwrap_x_to_rho(x, pdim):
     '''
@@ -413,6 +496,40 @@ class RabiWeakMeasSDE:
         vecsize = int(pdim*(pdim+1)/2)
         permidx = tf.concat([[int(pdim*ii + jj) for ii in range(pdim) for jj in range(ii,pdim)], tf.zeros(int(pdim**2 - vecsize), dtype=tf.int32)], axis=0)
         return tf.gather(tf.gather(bp_unwrap, permidx, axis=2), permidx, axis=3)[:,:,:vecsize,:vecsize]
+
+    def get_ham(omega, epsilons, n):
+        pdim = 2**n
+
+        ham = np.zeros([pdim, pdim], dtype=np.cdouble)
+        for j in range(n):
+            _, _, _, sxj, _ = [2.0*sm.numpy() for sm in operations.prod_ops(j, 2, n)]
+            ham = ham + 0.5*omega*sxj
+
+        assert(len(epsilons) <= n-1)
+        for j, eps in enumerate(epsilons):
+            _, _, szj, _, _ = [2.0*sm.numpy() for sm in operations.prod_ops(j, 2, n)]
+            _, _, szjp1, _, _ = [2.0*sm.numpy() for sm in operations.prod_ops(j+1, 2, n)]
+
+            ham = ham + eps*np.matmul(szj, szjp1)
+
+        return ham
+
+    def get_liouv(omega, gamma, epsilons, n):
+        pdim = 2**n
+
+        liouv = np.zeros([pdim**2, pdim**2], dtype=np.cdouble)
+        eye = np.eye(pdim, dtype=np.cdouble)
+
+        # Hamiltonian
+        ham = RabiWeakMeasSDE.get_ham(omega, epsilons, n)
+        liouv = liouv - 1.0j*(kron(ham, eye).numpy() - kron(eye,np.transpose(ham)).numpy())
+
+        # Lindblad terms
+        for j in range(n):
+            _, _, szj, _, _ = [2.0*sm.numpy() for sm in operations.prod_ops(j, 2, n)]
+            liouv = liouv + 0.5*gamma*(kron(szj, np.transpose(szj)).numpy() - np.eye(pdim**2, dtype=np.cdouble))
+
+        return liouv
 
 class RabiWeakMeasTrajSDE:
     def __init__(self, rhovec, deltat, qidx):
