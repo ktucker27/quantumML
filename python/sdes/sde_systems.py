@@ -408,9 +408,12 @@ class RabiWeakMeasSDE:
             _, _, szj, _, _ = [2.0*sm for sm in operations.prod_ops(epsidx - 3, 2, n)]
             _, _, szjp1, _, _ = [2.0*sm for sm in operations.prod_ops(epsidx - 3 + 1, 2, n)]
 
-            pten = tf.cast(tf.expand_dims(tf.dtypes.complex(p[:,epsidx], 0.0), axis=1), dtype=tf.complex128)
+            pten = -1.0j*tf.cast(tf.expand_dims(tf.dtypes.complex(p[:,epsidx], 0.0), axis=1), dtype=tf.complex128)
             pten = tf.expand_dims(pten, axis=1)
-            ham = ham + pten*tf.matmul(szj, szjp1)
+            zz = tf.matmul(szj, szjp1)
+            zz_rho = tf.matmul(zz, rho)
+            rho_zz = tf.matmul(rho, zz)
+            ham = ham + pten*(zz_rho - rho_zz)
 
         x_out = wrap_rho_to_x(ham, pdim)[:,:,tf.newaxis]
         
