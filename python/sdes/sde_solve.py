@@ -169,11 +169,11 @@ def multiintj12(m,p,deltat,wvec):
   num_times = wvec.shape[-1] + 1
 
   gsi = wvec/math.sqrt(deltat)
-  mu = tf.random.normal(stddev=1.0, shape=[num_traj,num_times-1,m,1])
-  eta = tf.random.normal(stddev=1.0, shape=[num_traj,num_times-1,m,1,p])
-  zeta = tf.random.normal(stddev=1.0, shape=[num_traj,num_times-1,m,1,p])
+  mu = tf.cast(tf.dtypes.complex(tf.random.normal(stddev=1.0, shape=[num_traj,num_times-1,m,1]), 0.0), dtype=tf.complex128)
+  eta = tf.cast(tf.dtypes.complex(tf.random.normal(stddev=1.0, shape=[num_traj,num_times-1,m,1,p]), 0.0), dtype=tf.complex128)
+  zeta = tf.cast(tf.dtypes.complex(tf.random.normal(stddev=1.0, shape=[num_traj,num_times-1,m,1,p]), 0.0), dtype=tf.complex128)
 
-  sumval = tf.zeros([num_traj,num_times-1,m,m])
+  sumval = tf.zeros([num_traj,num_times-1,m,m], dtype=gsi.dtype)
   rhop = 0.0
   for ridx in range(p):
     r = float(ridx + 1)
@@ -185,12 +185,12 @@ def multiintj12(m,p,deltat,wvec):
   jmat = sumval*deltat/math.pi
   jmat = jmat + deltat*(0.5*tf.matmul(gsi, tf.transpose(gsi, perm=[0,1,3,2])) + \
                         math.sqrt(rhop)*(tf.matmul(mu, tf.transpose(gsi, perm=[0,1,3,2])) - tf.matmul(gsi, tf.transpose(mu, perm=[0,1,3,2]))))
-  jmat = jmat - jmat*tf.eye(m,m,[num_traj,num_times-1]) # Zero out the diagonal
+  jmat = jmat - jmat*tf.eye(m,m,[num_traj,num_times-1],dtype=jmat.dtype) # Zero out the diagonal
   return jmat
 
 class MilsteinModel(tf.Module):
 
-  def __init__(self, mint, maxt, deltat, a, b, bp, d, m, p, num_params, params=None, fix_params=None):
+  def __init__(self, mint, maxt, deltat, a, b, bp, d, m, p, num_params, params=None, fix_params=None, create_params=True):
     '''
     Input functions defining the SDE:
     a - Returns [num_traj,d,1] drift function of t and x([num_traj,d,1])
@@ -199,13 +199,17 @@ class MilsteinModel(tf.Module):
          which column of b is being differentiated. Is a function of t and x([num_traj,d,1])
     '''
     self.num_params = num_params
-    self.params = []
-    for pidx in range(self.num_params):
-      # Randomly generate model parameters for those not provided
-      if params is None or params[pidx] is None:
-        self.params.append(tf.Variable(np.random.uniform()))
-      else:
-        self.params.append(tf.Variable(params[pidx], trainable=(fix_params is not None and not fix_params[pidx])))
+    if create_params:
+      self.params = []
+      for pidx in range(self.num_params):
+        # Randomly generate model parameters for those not provided
+        if params is None or params[pidx] is None:
+          self.params.append(tf.Variable(np.random.uniform()))
+        else:
+          self.params.append(tf.Variable(params[pidx], trainable=(fix_params is not None and not fix_params[pidx])))
+      self.params = tf.stack(self.params)
+    else:
+      self.params = params
 
     #self.tvec = tf.range(mint,maxt,deltat)
     self.tvec = np.arange(mint,maxt,deltat)
@@ -221,9 +225,12 @@ class MilsteinModel(tf.Module):
     self.p = p
   
   #@tf.function
-  def __call__(self, x0, num_traj=None, wvec=None):
+  def __call__(self, x0, num_traj=None, wvec=None, params=None):
     if num_traj is None:
       num_traj = tf.shape(x0)[0]
+
+    if params is not None:
+      self.params = params
     
     num_times = self.tvec.shape[0]
 
@@ -233,7 +240,7 @@ class MilsteinModel(tf.Module):
         self.wvec = tf.cast(tf.random.normal(stddev=math.sqrt(self.deltat), shape=[num_traj,num_times-1,self.m,1]), dtype=x0.dtype)
 
     self.jmat = multiintj12(self.m, self.p, self.deltat, self.wvec) # [num_traj,num_times-1,m,m]
-    self.imat = 0.5*tf.eye(self.m, self.m, [num_traj,num_times-1])*(tf.matmul(self.wvec, tf.transpose(self.wvec, perm=[0,1,3,2])) - self.deltat) + self.jmat # [num_traj,num_times-1,m,m]
+    self.imat = 0.5*tf.eye(self.m, self.m, [num_traj,num_times-1], dtype=self.wvec.dtype)*(tf.matmul(self.wvec, tf.transpose(self.wvec, perm=[0,1,3,2])) - self.deltat) + self.jmat # [num_traj,num_times-1,m,m]
 
     prevy = tf.ones(shape=[num_traj,self.d,1], dtype=x0.dtype)*tf.reshape(x0,[-1,self.d,1])
     y = tf.reshape(prevy, [num_traj,self.d,1])

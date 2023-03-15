@@ -124,12 +124,12 @@ def suph_herm_p(l,rho):
     NB: It is assumed that l is Hermetian as conjugate transposes are omitted
     '''
     # return shape = [num_traj,d,d]
-    t1 = tf.map_fn(lambda x: kron(x[0],x[1]), [tf.ones(rho.shape)*l,rho], fn_output_signature=tf.TensorSpec(shape=[4,4]))
-    t2 = tf.map_fn(lambda x: kron(x[0],x[1]), [rho,tf.ones(rho.shape)*l], fn_output_signature=tf.TensorSpec(shape=[4,4]))
+    t1 = kron(l, tf.eye(2, dtype=rho.dtype))
+    t2 = kron(tf.eye(2, dtype=rho.dtype), l)
 
-    lvec = tf.reshape(l,[4])*tf.ones([rho.shape[0],1])
     rho_vec = tf.reshape(rho, [-1,4])
-    t3 = tf.tensordot(rho_vec, lvec, axes=0) + tf.linalg.diag(tf.matvec(tf.expand_dims(lvec,1),rho_vec)*tf.ones([1,4]))
+    lvec = tf.reshape(l,[-1])*tf.ones(tf.shape(rho_vec), dtype=rho.dtype)
+    t3 = tf.matmul(rho_vec[:,:,tf.newaxis], lvec[:,tf.newaxis,:]) + tf.eye(4, dtype=rho.dtype)*tf.matmul(tf.expand_dims(lvec,1),rho_vec[:,:,tf.newaxis])
 
     return t1 + t2 - 2.0*t3
 
@@ -161,13 +161,12 @@ class GenoisSDE:
         return tf.pow(0.5*tf.cast(p[2], tf.complex128),0.5)*tf.concat([hi, hq], axis=2)
 
     def bp0(t,x,p):
-        # return shape = [num_traj,m=2,d=4,d=4]
+        # return shape = [num_traj,m=2,d=3,d=3]
         rho = unwrap_x_to_rho(x[...,0], 2)
         _, _, sz = paulis()
-        hi = suph_herm_p(tf.pow(0.5*p[1],0.5)*np.array(sz), rho)
-        hq = suph_herm_p(-1.0j*tf.pow(0.5*p[1],0.5)*np.array(sz), rho)
-        hi = tf.expand_dims(hi,1)
-        hq = tf.expand_dims(hq,1)
+        hi = tf.reshape(wrap_rho_to_x(suph_herm_p(tf.pow(0.5*p[1],0.5)*np.array(sz), rho)), [-1,3,1])
+        hq = tf.reshape(wrap_rho_to_x(suph_herm_p(-1.0j*tf.pow(0.5*p[1],0.5)*np.array(sz), rho)), [-1,3,1])
+
         return tf.gather(tf.gather(tf.pow(0.5*p[2],0.5)*tf.concat(hi, hq, axis=1), [0,1,3], axis=2), [0,1,3], axis=3)
 
     def a(t,x,p):
@@ -211,16 +210,26 @@ class GenoisSDE:
         return pten2*tf.concat([hi, hq], axis=2)
 
     def bp(t,x,p):
-        # return shape = [num_traj,m=2,d=4,d=4]
+        # return shape = [num_traj,m=2,d=3,d=3]
         rho = unwrap_x_to_rho(x[...,0], 2)
         if tf.rank(p) == 1:
             p = p[tf.newaxis,:]
         _, _, sz = paulis()
-        hi = suph_herm_p(tf.pow(0.5*p[:,1,tf.newaxis,tf.newaxis],0.5)*np.array(sz), rho)
-        hq = suph_herm_p(-1.0j*tf.pow(0.5*p[:,1,tf.newaxis,tf.newaxis],0.5)*np.array(sz), rho)
-        hi = tf.expand_dims(hi,1)
-        hq = tf.expand_dims(hq,1)
-        return tf.gather(tf.gather(tf.pow(0.5*p[:,2,tf.newaxis,tf.newaxis],0.5)*tf.concat(hi, hq, axis=1), [0,1,3], axis=2), [0,1,3], axis=3)
+        pten = tf.cast(tf.pow(0.5*tf.dtypes.complex(p[:,1], 0.0),0.5), dtype=tf.complex128)
+        pten = tf.expand_dims(pten, axis=1)
+        pten = tf.expand_dims(pten, axis=1)
+        hi = pten*suph_herm_p(np.array(sz), rho)
+        hq = -1.0j*pten*suph_herm_p(np.array(sz), rho)
+        hi = tf.expand_dims(hi,3)
+        hq = tf.expand_dims(hq,3)
+
+        pten2 = tf.cast(tf.pow(0.5*tf.dtypes.complex(p[:,2], 0.0),0.5), dtype=tf.complex128)
+        pten2 = tf.expand_dims(pten2, axis=1)
+        pten2 = tf.expand_dims(pten2, axis=1)
+        pten2 = tf.expand_dims(pten2, axis=1)
+
+        bp_unwrap = tf.transpose(pten2*tf.concat([hi, hq], axis=3), perm=[0,3,1,2])
+        return tf.gather(tf.gather(bp_unwrap, [0,1,3], axis=2), [0,1,3], axis=3)
 
 class GenoisTrajSDE:
     def __init__(self, rhovec, deltat):
@@ -372,20 +381,28 @@ class RabiWeakMeasSDE:
 
     def bp(t,x,p):
         # return shape = [num_traj,m,d,d]
+        pdim = int(-0.5 + np.sqrt(0.25 + 2.0*tf.cast(tf.shape(x)[1], dtype=tf.float32)))
+        n = np.log2(pdim).astype(int)
+        
+        rho = unwrap_x_to_rho(x[...,0], pdim)
+        if tf.rank(p) == 1:
+            p = p[tf.newaxis,:]
+        _, _, sz = paulis()
+        pten = tf.cast(tf.pow(0.5*tf.dtypes.complex(p[:,1], 0.0),0.5), dtype=tf.complex128)
+        pten = tf.expand_dims(pten, axis=1)
+        pten = tf.expand_dims(pten, axis=1)
+        hi = pten*suph_herm_p(np.array(sz), rho)
+        hq = -1.0j*pten*suph_herm_p(np.array(sz), rho)
+        hi = tf.expand_dims(hi,3)
+        hq = tf.expand_dims(hq,3)
 
-        raise Exception('bp for RabiWeakMeasSDE not yet implemented')
+        pten2 = tf.cast(tf.pow(0.5*tf.dtypes.complex(p[:,2], 0.0),0.5), dtype=tf.complex128)
+        pten2 = tf.expand_dims(pten2, axis=1)
+        pten2 = tf.expand_dims(pten2, axis=1)
+        pten2 = tf.expand_dims(pten2, axis=1)
 
-        # TODO - ND implementation
-        # 1D implementation:
-        # rho = unwrap_x_to_rho(x[...,0], 2)
-        # if tf.rank(p) == 1:
-        #     p = p[tf.newaxis,:]
-        # _, _, sz = paulis()
-        # hi = suph_herm_p(tf.pow(0.5*p[:,1,tf.newaxis,tf.newaxis],0.5)*np.array(sz), rho)
-        # hq = suph_herm_p(-1.0j*tf.pow(0.5*p[:,1,tf.newaxis,tf.newaxis],0.5)*np.array(sz), rho)
-        # hi = tf.expand_dims(hi,1)
-        # hq = tf.expand_dims(hq,1)
-        # return tf.gather(tf.gather(tf.pow(0.5*p[:,2,tf.newaxis,tf.newaxis],0.5)*tf.concat(hi, hq, axis=1), [0,1,3], axis=2), [0,1,3], axis=3)
+        bp_unwrap = tf.transpose(pten2*tf.concat([hi, hq], axis=3), perm=[0,3,1,2])
+        return tf.gather(tf.gather(bp_unwrap, [0,1,3], axis=2), [0,1,3], axis=3)
 
 class RabiWeakMeasTrajSDE:
     def __init__(self, rhovec, deltat, qidx):
