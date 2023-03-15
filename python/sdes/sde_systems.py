@@ -124,12 +124,13 @@ def suph_herm_p(l,rho):
     NB: It is assumed that l is Hermetian as conjugate transposes are omitted
     '''
     # return shape = [num_traj,d,d]
-    t1 = kron(l, tf.eye(2, dtype=rho.dtype))
-    t2 = kron(tf.eye(2, dtype=rho.dtype), l)
+    pdim = tf.shape(l)[0]
+    t1 = kron(l, tf.eye(pdim, dtype=rho.dtype))
+    t2 = kron(tf.eye(pdim, dtype=rho.dtype), l)
 
-    rho_vec = tf.reshape(rho, [-1,4])
+    rho_vec = tf.reshape(rho, [-1,pdim**2])
     lvec = tf.reshape(l,[-1])*tf.ones(tf.shape(rho_vec), dtype=rho.dtype)
-    t3 = tf.matmul(rho_vec[:,:,tf.newaxis], lvec[:,tf.newaxis,:]) + tf.eye(4, dtype=rho.dtype)*tf.matmul(tf.expand_dims(lvec,1),rho_vec[:,:,tf.newaxis])
+    t3 = tf.matmul(rho_vec[:,:,tf.newaxis], lvec[:,tf.newaxis,:]) + tf.eye(pdim**2, dtype=rho.dtype)*tf.matmul(tf.expand_dims(lvec,1),rho_vec[:,:,tf.newaxis])
 
     return t1 + t2 - 2.0*t3
 
@@ -383,7 +384,7 @@ class RabiWeakMeasSDE:
         # return shape = [num_traj,m,d,d]
         pdim = int(-0.5 + np.sqrt(0.25 + 2.0*tf.cast(tf.shape(x)[1], dtype=tf.float32)))
         n = np.log2(pdim).astype(int)
-        
+
         rho = unwrap_x_to_rho(x[...,0], pdim)
         if tf.rank(p) == 1:
             p = p[tf.newaxis,:]
@@ -391,18 +392,27 @@ class RabiWeakMeasSDE:
         pten = tf.cast(tf.pow(0.5*tf.dtypes.complex(p[:,1], 0.0),0.5), dtype=tf.complex128)
         pten = tf.expand_dims(pten, axis=1)
         pten = tf.expand_dims(pten, axis=1)
-        hi = pten*suph_herm_p(np.array(sz), rho)
-        hq = -1.0j*pten*suph_herm_p(np.array(sz), rho)
-        hi = tf.expand_dims(hi,3)
-        hq = tf.expand_dims(hq,3)
+
+        hi = None
+        for j in range(n):
+            _, _, szj, _, _ = [2.0*sm for sm in operations.prod_ops(j, 2, n)]
+            hij = pten*suph_herm_p(np.array(szj), rho)
+            hij = tf.expand_dims(hij,3)
+
+            if hi is None:
+                hi = hij
+            else:
+                hi = tf.concat([hi, hij], axis=3)
 
         pten2 = tf.cast(tf.pow(0.5*tf.dtypes.complex(p[:,2], 0.0),0.5), dtype=tf.complex128)
         pten2 = tf.expand_dims(pten2, axis=1)
         pten2 = tf.expand_dims(pten2, axis=1)
         pten2 = tf.expand_dims(pten2, axis=1)
 
-        bp_unwrap = tf.transpose(pten2*tf.concat([hi, hq], axis=3), perm=[0,3,1,2])
-        return tf.gather(tf.gather(bp_unwrap, [0,1,3], axis=2), [0,1,3], axis=3)
+        bp_unwrap = tf.transpose(pten2*hi, perm=[0,3,1,2])
+        vecsize = int(pdim*(pdim+1)/2)
+        permidx = tf.concat([[int(pdim*ii + jj) for ii in range(pdim) for jj in range(ii,pdim)], tf.zeros(int(pdim**2 - vecsize), dtype=tf.int32)], axis=0)
+        return tf.gather(tf.gather(bp_unwrap, permidx, axis=2), permidx, axis=3)[:,:,:vecsize,:vecsize]
 
 class RabiWeakMeasTrajSDE:
     def __init__(self, rhovec, deltat, qidx):
