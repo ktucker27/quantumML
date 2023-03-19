@@ -68,11 +68,11 @@ def svd_trunc(a,tol=0.0,maxrank=None):
     return s[:endidx+1], u[...,:endidx+1], v[...,:endidx+1]
 
 def kron(a,b):
-    assert tf.rank(a) == 2
-    assert tf.rank(b) == 2
+    #assert tf.rank(a) == 2
+    #assert tf.rank(b) == 2
     cp = tf.tensordot(a,b,axes=0)
     c = tf.transpose(cp, perm=[0,2,1,3])
-    return tf.reshape(c, [a.shape[0]*b.shape[0], a.shape[1]*b.shape[1]])
+    return tf.reshape(c, [tf.shape(a)[0]*tf.shape(b)[0], tf.shape(a)[1]*tf.shape(b)[1]])
 
 def local_ops(n):
     '''
@@ -99,12 +99,20 @@ def local_op_to_prod(olocal, idx, n):
     idn = tf.eye(pdim, dtype=olocal.dtype)
     id = tf.ones([1,1], dtype=olocal.dtype)
     for ii in range(idx):
+        # Set the shape invariants to allow the operator to grow
+        tf.autograph.experimental.set_loop_options(
+            shape_invariants=[(id, tf.TensorShape([None, None]))]
+        )
         id = kron(id, idn)
 
     o = kron(id, olocal)
 
     id = tf.ones([1,1], dtype=olocal.dtype)
     for ii in range(idx+1,n):
+        # Set the shape invariants to allow the operator to grow
+        tf.autograph.experimental.set_loop_options(
+            shape_invariants=[(id, tf.TensorShape([None, None]))]
+        )
         id = kron(id, idn)
 
     return kron(o, id)

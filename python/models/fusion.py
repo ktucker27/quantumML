@@ -83,14 +83,16 @@ def run_model_2d(params, num_traj, mint=0.0, maxt=1.0, deltat=2**(-8), comp_i=Tr
 
   d = 10
   m = 2
+  p = 10
 
   a = sde_systems.RabiWeakMeasSDE.a
   b = sde_systems.RabiWeakMeasSDE.b
-  #bp = sde_systems.RabiWeakMeasSDE.bp
+  bp = sde_systems.RabiWeakMeasSDE.bp
 
   tvec = np.arange(mint,maxt,deltat)
   wvec = tf.cast(tf.random.normal(stddev=math.sqrt(deltat), shape=[num_traj,tvec.shape[0]-1,m,1]), dtype=x0.dtype)
   emod = sde_solve.EulerMultiDModel(mint, maxt, deltat, a, b, d, m, len(params), params, [True, True, True, True], create_params=False)
+  #emod = sde_solve.MilsteinModel(mint, maxt, deltat, a, b, bp, d, m, p, len(params), params, [True, True, True, True], create_params=False)
 
   xvec = emod(x0, num_traj, wvec, params)
   rhovec = sde_systems.unwrap_x_to_rho(tf.reshape(tf.transpose(xvec, perm=[0,2,1]), [-1,10]), 4)
