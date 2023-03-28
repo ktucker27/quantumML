@@ -76,10 +76,11 @@ def get_probs(rhovec):
 
   return tf.stack([px, 1-px, py, 1-py, pz, 1-pz], axis=2)
 
-def run_model_2d(params, num_traj, mint=0.0, maxt=1.0, deltat=2**(-8), comp_i=True):
+def run_model_2d(rho0, params, num_traj, mint=0.0, maxt=1.0, deltat=2**(-8), comp_i=True):
   #rho0 = tf.reshape(tf.ones([num_traj,1,1], dtype=tf.complex128)*tf.constant([[1.0,0],[0,0]], dtype=tf.complex128), [num_traj,4,1])
   #rho0 = tf.reshape(tf.ones([num_traj,1,1], dtype=tf.complex128)*tf.constant([[0.5,0.5],[0.5,0.5]], dtype=tf.complex128), [num_traj,4,1])
-  x0 = tf.reshape(tf.ones([num_traj,1,1], dtype=tf.complex128)*tf.constant([1.0,0,0,0,0,0,0,0,0,0], dtype=tf.complex128), [num_traj,10,1])
+  #x0 = tf.reshape(tf.ones([num_traj,1,1], dtype=tf.complex128)*tf.constant([1.0,0,0,0,0,0,0,0,0,0], dtype=tf.complex128), [num_traj,10,1])
+  x0 = sde_systems.wrap_rho_to_x(rho0, 4)
 
   d = 10
   m = 2
@@ -310,5 +311,37 @@ def build_fusion_ae_model(seq_len, num_features, encoder_sizes, num_params, rho0
     
     return model
 
+def build_fusion_cnn_model(seq_len, num_features, grp_size, conv_sizes, encoder_sizes, num_params, rho0, deltat):
+    model = tf.keras.Sequential()
+    
+    #model.add(tf.keras.layers.Input(shape=(seq_len, num_features, grp_size)))
+
+    first = True
+    for conv_size in conv_sizes:
+      if first:
+        model.add(tf.keras.layers.Conv2D(conv_size, (10,2), activation='relu', input_shape=(seq_len, num_features, grp_size)))
+        first = False
+      else:
+        model.add(tf.keras.layers.Conv2D(conv_size, (10,1), activation='relu'))
+      #model.add(tf.keras.layers.MaxPooling2D((2,1)))
+      model.add(tf.keras.layers.AveragePooling2D((2,1)))
+
+    model.add(tf.keras.layers.Flatten())
+
+    for size in encoder_sizes:
+      model.add(tf.keras.layers.Dense(size, activation='relu'))
+
+    model.add(tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: max_activation(x, max_val=4)))
+
+    model.add(tf.keras.layers.RepeatVector(seq_len))
+    
+    # Add the physical RNN layer
+    model.add(tf.keras.layers.RNN(EulerRNNCell(maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0)),
+                                  stateful=False,
+                                  return_sequences=True,
+                                  name='physical_layer'))
+    
+    return model
+    
 def compile_model(model, loss_func, optimizer='adam', metrics=[]):
     model.compile(loss=loss_func, optimizer=optimizer, metrics=metrics)
