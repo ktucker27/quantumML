@@ -108,9 +108,40 @@ def init_probs_from_truth(truth_probs):
 
     return return_dict
 
+class TestLiouv(unittest.TestCase):
+    def test_liouv_vs_truth_files(self):
+        tol = 1e-12
+
+        # Load probabilities from truth files
+        filedir = os.path.join(datadir, 'two_qubit_truth')
+        truth_dict = {}
+        load_truth_data_two_qubits(filedir, truth_dict)
+        truth_times, truth_probs = truth_dict_to_probs(truth_dict)
+
+        # Run Liouvillian evolution
+        mint = 0.0
+        maxt = 1.0
+        deltat = truth_times[1]
+
+        omega = 1.395
+        kappa = 0.83156
+        eta = 0.1469
+        eps = 0.1
+
+        _, _, sz = sde_systems.paulis()
+        rho0 = sde_systems.get_init_rho(sz, sz, 0, 0)
+        liouv = sde_systems.RabiWeakMeasSDE.get_liouv(omega, 2.0*kappa, [eps], 2)
+        _, liouv_probs = sde_systems.get_2d_probs_truth(liouv, rho0, deltat, maxt - deltat*0.5)
+
+        # Compare all probabilities
+        mse = tf.reduce_mean(tf.pow(tf.math.real(truth_probs[0,:25,:] - liouv_probs[:,6:]), 2.0))
+        print(f'Liouvillian vs. files MSE: {mse}')
+        self.assertLessEqual(tf.reduce_max(tf.abs(tf.math.imag(liouv_probs))), 1e-14)
+        self.assertLessEqual(mse, tol)
+
 class TestRunModel2d(unittest.TestCase):
 
-    def test_vs_truth_files(self):
+    def test_r2d_vs_truth_files(self):
         tol = 5e-5
 
         # Set initial condition
@@ -140,7 +171,7 @@ class TestRunModel2d(unittest.TestCase):
         for ii in range(36):
             self.assertLessEqual(tf.abs(tf.reduce_mean(tf.pow(truth_probs[0,:25,ii] - np.interp(truth_times[:25], tvec, tf.reduce_mean(probs[:,:,ii+6], axis=0)), 2.0))), tol)
 
-    def test_vs_liouv(self):
+    def test_r2d_vs_liouv(self):
         tol = 5e-5
 
         mint = 0.0
@@ -173,7 +204,9 @@ class TestRunModel2d(unittest.TestCase):
             # Compare all probabilities
             self.assertLessEqual(tf.reduce_max(tf.abs(tf.math.imag(probs))), 1e-16)
             self.assertLessEqual(tf.reduce_max(tf.abs(tf.math.imag(probs_truth))), 1e-14)
-            self.assertLessEqual(tf.reduce_mean(tf.pow(tf.math.real(tf.reduce_mean(probs, axis=0) - probs_truth), 2.0)), tol)
+            mse = tf.reduce_mean(tf.pow(tf.math.real(tf.reduce_mean(probs, axis=0) - probs_truth), 2.0))
+            print(f'MSE: {mse}')
+            self.assertLessEqual(mse, tol)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
