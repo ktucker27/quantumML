@@ -15,8 +15,8 @@ def paulis():
     return [ np.array([[0.0, 1.0],[1.0, 0.0]], dtype=np.cdouble), np.array([[0.0, -1.0j],[1.0j, 0.0]], dtype=np.cdouble), np.array([[1.0, 0.0],[0.0, -1.0]], dtype=np.cdouble) ]
 
 def kron(a,b):
-    assert tf.rank(a) == 2
-    assert tf.rank(b) == 2
+    #assert tf.rank(a) == 2
+    #assert tf.rank(b) == 2
     cp = tf.tensordot(a,b,axes=0)
     c = tf.transpose(cp, perm=[0,2,1,3])
     return tf.reshape(c, [a.shape[0]*b.shape[0], a.shape[1]*b.shape[1]])
@@ -47,6 +47,36 @@ def calc_exp(x,o):
     rho = tf.reshape(x, [-1,tf.shape(x)[1],2,2])
 
     return tf.linalg.trace(tf.matmul(rho, o))
+
+def get_init_rho(op1, op2, idx1, idx2):
+    '''
+    Well return the pure state density operator corresponding to the requested tensor product
+    of operator eigenvectors. E.g. providing (sz, sz, 0, 1) will select the (+-) eigenvectors
+    for sz on the A and B subsystems respectively, put them in a tensor Kronecker product, and 
+    return the outer product of that result
+
+    Input:
+    op1, op2 - shape = [sqrt(pdim), sqrt(pdim)] operators on A and B subsystems
+    idx1, idx2 - indices of each eigenvalue to select taken from the list sorted
+                 in descending order
+
+    Output:
+    rho0 - shape = [pdim, pdim] density operator for the pure state evec1[:,idx1] x evec2[:,idx2]
+           where the eigenvectors are sorted in descending order of eigenvalues
+    '''
+    # Get eigenvalues/vectors
+    evals1, evecs1 = np.linalg.eig(op1)
+    eidx1 = np.flip(np.argsort(evals1))
+    evals2, evecs2 = np.linalg.eig(op2)
+    eidx2 = np.flip(np.argsort(evals2))
+
+    # Get the vector in the tensor product space
+    evec = tf.reshape(tf.tensordot(evecs1[:,eidx1[idx1]],evecs2[:,eidx2[idx2]],0), [-1])
+
+    # Get the outer product of the eigenvector
+    rho0 = tf.tensordot(evec, tf.math.conj(evec), 0)
+
+    return rho0
 
 def calc_op_probs(rho, op1, op2):
   '''
@@ -100,16 +130,26 @@ def get_2d_probs(rhovec):
   sx, sy, sz = paulis()
 
   ops = [sx, sy, sz]
+  eye = np.eye(2, dtype=np.cdouble)
 
   probs = None
+  for op in ops:
+    prod_op1 = kron(op, eye)
+    probvec = 0.5*(calc_op_exp(rhovec, prod_op1)[:,:,tf.newaxis] + 1.0)
+
+    if probs is None:
+        probs = probvec
+    else:
+        probs = tf.concat([probs, probvec], axis=2)
+
+    prod_op2 = kron(eye, op)
+    probvec = 0.5*(calc_op_exp(rhovec, prod_op2)[:,:,tf.newaxis] + 1.0)
+    probs = tf.concat([probs, probvec], axis=2)
+
   for op1 in ops:
     for op2 in ops:
       _, probvec = calc_op_probs(rhovec, op1, op2)
-
-      if probs is None:
-        probs = probvec
-      else:
-        probs = tf.concat([probs, probvec], axis=2)
+      probs = tf.concat([probs, probvec], axis=2)
 
   return probs
 
@@ -403,16 +443,19 @@ class RabiWeakMeasSDE:
             ham = ham + pten*(sx_rho - rho_sx)
 
         # Add crosstalk terms
-        assert(tf.shape(p)[1] - 3 <= n-1)
+        #assert(tf.shape(p)[1] - 3 <= n-1)
         for epsidx in range(3,tf.shape(p)[1]):
-            _, _, szj, _, _ = [2.0*sm for sm in operations.prod_ops(epsidx - 3, 2, n)]
-            _, _, szjp1, _, _ = [2.0*sm for sm in operations.prod_ops(epsidx - 3 + 1, 2, n)]
+            _, _, szj, _, syj = [2.0*sm for sm in operations.prod_ops(epsidx - 3, 2, n)]
+            _, _, szjp1, _, syjp1 = [2.0*sm for sm in operations.prod_ops(epsidx - 3 + 1, 2, n)]
 
             pten = -1.0j*tf.cast(tf.expand_dims(tf.dtypes.complex(p[:,epsidx], 0.0), axis=1), dtype=tf.complex128)
             pten = tf.expand_dims(pten, axis=1)
             zz = tf.matmul(szj, szjp1)
             zz_rho = tf.matmul(zz, rho)
             rho_zz = tf.matmul(rho, zz)
+            yy = tf.matmul(syj, syjp1)
+            yy_rho = tf.matmul(yy, rho)
+            rho_yy = tf.matmul(rho, yy)
             ham = ham + pten*(zz_rho - rho_zz)
 
         x_out = wrap_rho_to_x(ham, pdim)[:,:,tf.newaxis]
