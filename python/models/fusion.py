@@ -125,56 +125,66 @@ class EulerRNNCell(tf.keras.layers.Layer):
   ''' An RNN cell for taking a single Euler step
   '''
 
-  def __init__(self, rho0, maxt, deltat, num_traj=1, **kwargs):
+  def __init__(self, rho0, maxt, deltat, params, num_traj=1, input_param=0, **kwargs):
     self.rho0 = tf.reshape(rho0, [-1])
     self.maxt = maxt
     self.deltat = deltat
     self.num_traj = num_traj
-    self.params = np.array([5.0265,1.1,0.36], dtype=np.double)
+    self.params = params
+    self.input_param = input_param
 
     self.state_size = self.rho0.shape
-    self.output_size = 6
+    self.output_size = 43
 
     super(EulerRNNCell, self).__init__(**kwargs)
 
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
-    return tf.reshape(tf.ones([batch_size,1], dtype=tf.complex128)*tf.cast(tf.constant(self.rho0), dtype=tf.complex128), [batch_size,4])
+    return tf.reshape(tf.ones([batch_size,1], dtype=tf.complex128)*tf.cast(tf.constant(self.rho0), dtype=tf.complex128), [batch_size,4,4])
 
   def run_model(self, rho, params, num_traj, mint, maxt, deltat=2**(-8), comp_iq=True):
-    x0 = sde_systems.wrap_rho_to_x(rho, 2)
+    x0 = sde_systems.wrap_rho_to_x(rho, 4)
 
-    d = 3
+    d = 10
     m = 2
 
-    a = sde_systems.GenoisSDE.a
-    b = sde_systems.GenoisSDE.b
+    a = sde_systems.RabiWeakMeasSDE.a
+    b = sde_systems.RabiWeakMeasSDE.b
 
     tvec = np.arange(mint,maxt,deltat)
     wvec = tf.cast(tf.random.normal(stddev=math.sqrt(deltat), shape=[num_traj,tvec.shape[0]-1,m,1]), dtype=x0.dtype)
-    emod = sde_solve.EulerMultiDModel(mint, maxt, deltat, a, b, d, m, len(params), params, [True, True, True], create_params=False)
+    emod = sde_solve.EulerMultiDModel(mint, maxt, deltat, a, b, d, m, params.shape[1], params, [True, True, True, True], create_params=False)
     xvec = emod(x0, num_traj, wvec, params)
-    rhovec = sde_systems.unwrap_x_to_rho(tf.reshape(tf.transpose(xvec, perm=[0,2,1]), [-1,3]), 2)
-    rhovec = tf.reshape(rhovec, [-1,tvec.shape[0],4])
+    rhovec = sde_systems.unwrap_x_to_rho(tf.reshape(tf.transpose(xvec, perm=[0,2,1]), [-1,10]), 4)
+    rhovec = tf.reshape(rhovec, [num_traj,-1,4,4])
 
     return rhovec
 
   def call(self, inputs, states):
     rho = states[0]
 
-    #traj_inputs = tf.stack([self.params[0]*tf.ones(tf.shape(inputs), dtype=inputs.dtype), tf.pow(inputs, 2.0) + 1.0e-8, self.params[2]*tf.ones(tf.shape(inputs), dtype=inputs.dtype)], axis=1)
-    traj_inputs = tf.stack([inputs + 1.0e-8, self.params[1]*tf.ones(tf.shape(inputs), dtype=inputs.dtype), self.params[2]*tf.ones(tf.shape(inputs), dtype=inputs.dtype)], axis=1)
+    for ii in range(self.params.shape[0]):
+      if ii == self.input_param:
+        param_inputs = inputs + 1.0e-8
+      else:
+        param_inputs = self.params[ii]*tf.ones(tf.shape(inputs), dtype=inputs.dtype)
+      
+      if ii == 0:
+        traj_inputs = param_inputs
+      else:
+        traj_inputs = tf.concat((traj_inputs, param_inputs), axis=1)
+
     traj_inputs = tf.squeeze(traj_inputs)
     traj_inputs = tf.tile(traj_inputs, multiples=[self.num_traj,1])
-    rho = tf.tile(rho, multiples=[self.num_traj,1])
+    rho = tf.tile(rho, multiples=[self.num_traj,1,1])
 
     # Advance the state one time step
     rhovecs = self.run_model(rho, traj_inputs, num_traj=tf.shape(traj_inputs)[0], mint=0, maxt=self.maxt, deltat=self.deltat, comp_iq=False)
 
     # Average over trajectories
-    rhovecs = tf.reduce_mean(tf.reshape(rhovecs, [self.num_traj,-1,rhovecs.shape[1],rhovecs.shape[2]]), axis=0)
+    rhovecs = tf.reduce_mean(tf.reshape(rhovecs, [self.num_traj,-1,tf.shape(rhovecs)[1],tf.shape(rhovecs)[2],tf.shape(rhovecs)[3]]), axis=0)
     
     # Calculate probabilities
-    probs = tf.math.real(get_probs(rhovecs)[:,-1,:])
+    probs = tf.math.real(sde_systems.get_2d_probs(rhovecs)[:,-1,:])
     probs = tf.math.maximum(probs,0)
     probs = tf.math.minimum(probs,1.0)
 
@@ -182,7 +192,7 @@ class EulerRNNCell(tf.keras.layers.Layer):
     #mask = tf.math.logical_not(tf.math.is_nan(tf.reduce_max(tf.math.real(probs), axis=[1])))
     #probs = tf.boolean_mask(probs, mask)
 
-    return tf.concat((probs, tf.cast(inputs, dtype=tf.float64)), axis=1), [rhovecs[:,-1,:]]
+    return tf.concat((probs, tf.cast(inputs, dtype=tf.float64)), axis=1), [rhovecs[:,-1,:,:]]
 
 class MySDELayer(tf.keras.layers.Layer):
   def __init__(self, num_traj, **kwargs):
@@ -342,6 +352,6 @@ def build_fusion_cnn_model(seq_len, num_features, grp_size, conv_sizes, encoder_
                                   name='physical_layer'))
     
     return model
-    
+
 def compile_model(model, loss_func, optimizer='adam', metrics=[]):
     model.compile(loss=loss_func, optimizer=optimizer, metrics=metrics)

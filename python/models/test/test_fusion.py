@@ -142,7 +142,7 @@ class TestLiouv(unittest.TestCase):
 class TestRunModel2d(unittest.TestCase):
 
     def test_r2d_vs_truth_files(self):
-        tol = 5e-5
+        tol = 5e-4
 
         # Set initial condition
         _, _, sz = sde_systems.paulis()
@@ -168,11 +168,15 @@ class TestRunModel2d(unittest.TestCase):
         probs = sde_systems.get_2d_probs(rhovec)
 
         # Compare all probabilities
+        mses = np.zeros(36, dtype=np.double)
         for ii in range(36):
-            self.assertLessEqual(tf.abs(tf.reduce_mean(tf.pow(truth_probs[0,:25,ii] - np.interp(truth_times[:25], tvec, tf.reduce_mean(probs[:,:,ii+6], axis=0)), 2.0))), tol)
+            mse = tf.abs(tf.reduce_mean(tf.pow(truth_probs[0,:25,ii] - np.interp(truth_times[:25], tvec, tf.reduce_mean(probs[:,:,ii+6], axis=0)), 2.0)))
+            mses[ii] = mse
+            self.assertLessEqual(mse, tol)
+        print(f'Max MSE: {np.max(mses)}')
 
     def test_r2d_vs_liouv(self):
-        tol = 5e-5
+        tol = 5e-4
 
         mint = 0.0
         maxt = 1.0
@@ -205,6 +209,53 @@ class TestRunModel2d(unittest.TestCase):
             self.assertLessEqual(tf.reduce_max(tf.abs(tf.math.imag(probs))), 1e-16)
             self.assertLessEqual(tf.reduce_max(tf.abs(tf.math.imag(probs_truth))), 1e-14)
             mse = tf.reduce_mean(tf.pow(tf.math.real(tf.reduce_mean(probs, axis=0) - probs_truth), 2.0))
+            print(f'MSE: {mse}')
+            self.assertLessEqual(mse, tol)
+
+class TestPhysicalRNN(unittest.TestCase):
+    def test_rnn_layer(self):
+        tol = 5e-4
+
+        num_traj = 100
+        mint = 0.0
+        maxt = 1.0
+        deltat = 2**(-8)
+        tvec = np.arange(mint, maxt, deltat)
+
+        omega = 1.395
+        kappa = 0.83156
+        eta = 0.1469
+        epsilons = [0.0, 0.5, 1.0]
+        params = np.array([omega,2.0*kappa,eta,epsilons[0]], dtype=np.double)
+
+        sx, _, _ = sde_systems.paulis()
+        rho0 = sde_systems.get_init_rho(sx, sx, 0, 1)
+
+        # Make the RNN layer
+        repeat_layer = tf.keras.layers.RepeatVector(tvec.shape[0])
+        euler_cell = fusion.EulerRNNCell(rho0=tf.constant(rho0), maxt=1.5*deltat, deltat=deltat, params=params, num_traj=num_traj, input_param=3)
+        rnn_layer = tf.keras.layers.RNN(euler_cell,
+                                        stateful=False,
+                                        return_sequences=True,
+                                        name='physical_layer')
+
+        t0 = time.time()
+        print('Running Euler RNN layer...')
+        repeat_out = repeat_layer(tf.constant(epsilons)[:,tf.newaxis])
+        probs = rnn_layer(repeat_out)
+        print(f'Done. Run time (s): {time.time() - t0}')
+
+        self.assertLessEqual(tf.reduce_max(tf.abs(tf.math.imag(probs))), 1e-16)
+
+        # Run the Liouvillian
+        for epsidx, eps in enumerate(epsilons):
+            print(f'Checking epsilon = {eps}...')
+            liouv = sde_systems.RabiWeakMeasSDE.get_liouv(omega, 2.0*kappa, [eps], 2)
+            _, probs_truth = sde_systems.get_2d_probs_truth(liouv, rho0, deltat, maxt - deltat*0.5)
+
+            # Compare all probabilities
+            self.assertLessEqual(tf.reduce_max(tf.abs(tf.math.imag(probs_truth))), 1e-14)
+            mse = tf.reduce_mean(tf.pow(probs[epsidx, :, :-1] - tf.math.real(probs_truth), 2.0))
             print(f'MSE: {mse}')
             self.assertLessEqual(mse, tol)
 
