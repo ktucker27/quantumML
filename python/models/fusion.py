@@ -301,6 +301,9 @@ def param_metric(y_true, y_pred):
 def max_activation(x, max_val=math.sqrt(50.0)):
   return tf.keras.activations.sigmoid(x/100.0)*max_val
 
+def max_activation_mean0(x, max_val=math.sqrt(50.0)):
+  return tf.keras.activations.sigmoid(x/100.0)*max_val - 0.5*max_val
+
 def build_fusion_ae_model(seq_len, num_features, encoder_sizes, num_params, rho0, deltat):
     model = tf.keras.Sequential()
     
@@ -321,27 +324,37 @@ def build_fusion_ae_model(seq_len, num_features, encoder_sizes, num_params, rho0
     
     return model
 
-def build_fusion_cnn_model(seq_len, num_features, grp_size, conv_sizes, encoder_sizes, num_params, rho0, deltat):
+def build_fusion_cnn_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, num_params, rho0, deltat):
     model = tf.keras.Sequential()
     
-    #model.add(tf.keras.layers.Input(shape=(seq_len, num_features, grp_size)))
-
     first = True
+
+    if avg_size is not None:
+      model.add(tf.keras.layers.AveragePooling2D((avg_size, 1), strides=1, input_shape=(seq_len, num_features, grp_size)))
+      first = False
+    else:
+      avg_size = 10
+    
+    first_conv = True
     for conv_size in conv_sizes:
       if first:
-        model.add(tf.keras.layers.Conv2D(conv_size, (10,2), activation='relu', input_shape=(seq_len, num_features, grp_size)))
+        model.add(tf.keras.layers.Conv2D(conv_size, (avg_size,2), activation='relu', input_shape=(seq_len, num_features, grp_size)))
         first = False
+        first_conv = False
       else:
-        model.add(tf.keras.layers.Conv2D(conv_size, (10,1), activation='relu'))
-      #model.add(tf.keras.layers.MaxPooling2D((2,1)))
-      model.add(tf.keras.layers.AveragePooling2D((2,1)))
+        if first_conv:
+          model.add(tf.keras.layers.Conv2D(conv_size, (avg_size,2), activation='relu', strides=1, padding='same'))
+          first_conv = False
+        else:
+          model.add(tf.keras.layers.Conv2D(conv_size, (avg_size,1), activation='relu'))
+      model.add(tf.keras.layers.AveragePooling2D((avg_size,1), strides=1))
 
     model.add(tf.keras.layers.Flatten())
 
     for size in encoder_sizes:
       model.add(tf.keras.layers.Dense(size, activation='relu'))
 
-    model.add(tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: max_activation(x, max_val=4)))
+    model.add(tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: max_activation_mean0(x, max_val=12)))
 
     model.add(tf.keras.layers.RepeatVector(seq_len))
     
