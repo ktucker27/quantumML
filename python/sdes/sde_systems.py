@@ -607,8 +607,8 @@ class RabiWeakMeasTrajSDE:
         if tf.rank(p) == 1:
             p = p[tf.newaxis,:]
         _, _, sz = paulis()
-        szj = tf.cast(operations.local_op_to_prod(sz, self.qidx, self.n), dtype=p.dtype)
-        l = tf.cast(tf.pow(0.5*p[:,1,tf.newaxis,tf.newaxis],0.5)*szj, dtype=rho.dtype)
+        szj = operations.local_op_to_prod(sz, self.qidx, self.n)
+        l = tf.cast(tf.pow(0.5*p[:,1,tf.newaxis,tf.newaxis],0.5), dtype=rho.dtype)*szj
         return tf.cast(tf.pow(0.5*p[:,2,tf.newaxis,tf.newaxis],0.5), dtype=rho.dtype)*tf.reshape(tf.linalg.trace(tf.matmul(rho,2.0*l)), [-1,1,1])
 
     def mib(self,t,x,p):
