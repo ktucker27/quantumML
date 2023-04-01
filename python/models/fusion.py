@@ -324,6 +324,31 @@ def build_fusion_ae_model(seq_len, num_features, encoder_sizes, num_params, rho0
     
     return model
 
+def build_fusion_ae_model_2d(seq_len, num_features, avg_size, encoder_sizes, num_params, rho0, deltat):
+    model = tf.keras.Sequential()
+    
+    model.add(tf.keras.layers.Input(shape=(seq_len, num_features, 1)))
+
+    if avg_size is not None:
+      model.add(tf.keras.layers.AveragePooling2D((avg_size, num_features), strides=1))
+
+    model.add(tf.keras.layers.Reshape([-1]))
+
+    for size in encoder_sizes:
+      model.add(tf.keras.layers.Dense(size, activation='relu'))
+
+    model.add(tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: max_activation_mean0(x, max_val=6)))
+
+    model.add(tf.keras.layers.RepeatVector(seq_len))
+    
+    # Add the physical RNN layer
+    model.add(tf.keras.layers.RNN(EulerRNNCell(maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0)),
+                                  stateful=False,
+                                  return_sequences=True,
+                                  name='physical_layer'))
+    
+    return model
+
 def build_fusion_cnn_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, num_params, rho0, deltat):
     model = tf.keras.Sequential()
     
