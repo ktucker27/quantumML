@@ -335,18 +335,17 @@ def build_fusion_cnn_model(seq_len, num_features, grp_size, avg_size, conv_sizes
     else:
       avg_size = 10
     
-    first_conv = True
-    for conv_size in conv_sizes:
+    for conv_idx, conv_size in enumerate(conv_sizes):
       if first:
-        model.add(tf.keras.layers.Conv2D(conv_size, (avg_size,2), activation='relu', input_shape=(seq_len, num_features, grp_size)))
+        model.add(tf.keras.layers.Conv2D(conv_size, (avg_size,2), input_shape=(seq_len, num_features, grp_size)))
         first = False
-        first_conv = False
       else:
-        if first_conv:
-          model.add(tf.keras.layers.Conv2D(conv_size, (avg_size,2), activation='relu', strides=1, padding='same'))
-          first_conv = False
+        if conv_idx == 0:
+          model.add(tf.keras.layers.Conv2D(conv_size, (avg_size,2), strides=1))
+        elif conv_idx == 1:
+          model.add(tf.keras.layers.Conv2D(conv_size, (avg_size,1)))
         else:
-          model.add(tf.keras.layers.Conv2D(conv_size, (avg_size,1), activation='relu'))
+          model.add(tf.keras.layers.Conv2D(conv_size, (avg_size,1)))
       model.add(tf.keras.layers.AveragePooling2D((avg_size,1), strides=1))
 
     model.add(tf.keras.layers.Flatten())
