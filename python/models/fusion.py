@@ -1,5 +1,6 @@
 import tensorflow as tf
 import numpy as np
+import scipy
 from tensorflow.keras import backend as K
 import os
 import sys
@@ -11,6 +12,22 @@ sys.path.append(os.path.join(parent, 'sdes'))
 
 import sde_solve
 import sde_systems
+
+def lin_func(x, m, b):
+  return m*x + b
+
+def lsq_diff(x, y, x_window, fit_func):
+  xdelta = int(x_window/2)
+  new_x = x[xdelta:-xdelta]
+  new_y = np.zeros(new_x.shape, dtype=y.dtype)
+  for newidx in range(new_x.shape[0]):
+    xidx = newidx+xdelta
+    m = (y[xidx+xdelta] - y[xidx-xdelta])/(x[xidx+xdelta] - x[xidx-xdelta])
+    b = y[xidx-xdelta]
+    result = scipy.optimize.curve_fit(fit_func, x[xidx-xdelta:xidx+xdelta] - x[xidx-xdelta], y[xidx-xdelta:xidx+xdelta], [m,b])
+    new_y[newidx] = result[0][0]
+
+  return new_x, new_y
 
 def run_model(rho0, params, num_traj, mint, maxt, deltat=2**(-8), comp_iq=True):
   #rho0 = tf.reshape(tf.ones([num_traj,1,1], dtype=tf.complex128)*tf.constant([[1.0,0],[0,0]], dtype=tf.complex128), [num_traj,4,1])
