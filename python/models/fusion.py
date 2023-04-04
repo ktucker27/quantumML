@@ -407,5 +407,44 @@ def build_fusion_cnn_model(seq_len, num_features, grp_size, avg_size, conv_sizes
     
     return model
 
+def build_fusion_multicnn_model(seq_len, num_features, grp_size, num_init, avg_size, conv_sizes, encoder_sizes, combo_sizes, num_params, rho0, deltat, add_physical=False):
+    inputs = tf.keras.layers.Input(shape=(seq_len, num_features, grp_size, num_init))
+
+    model1 = build_fusion_cnn_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, num_params, rho0, deltat)
+    model1.pop() # Physical layer
+    model1.pop() # Repeat layer
+    model1.pop() # Parameter layer
+
+    model2 = build_fusion_cnn_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, num_params, rho0, deltat)
+    model2.pop() # Physical layer
+    model2.pop() # Repeat layer
+    model2.pop() # Parameter layer
+
+    model1_out = model1(inputs[:,:,:,:,0])
+    model2_out = model2(inputs[:,:,:,:,1])
+
+    cat_out = tf.keras.layers.Concatenate(axis=1)([model1_out, model2_out])
+
+    for size in combo_sizes:
+      if size == 0:
+        continue
+      cat_out = tf.keras.layers.Dense(size, activation='relu')(cat_out)
+
+    param_out = tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: max_activation(x, max_val=4))(cat_out)
+
+    if add_physical:
+      repeat_out = tf.keras.layers.RepeatVector(seq_len)(param_out)
+      
+      # Add the physical RNN layer
+      physical_layer = tf.keras.layers.RNN(EulerRNNCell(maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0)),
+                                          stateful=False,
+                                          return_sequences=True,
+                                          name='physical_layer')
+      outputs = physical_layer(repeat_out)
+    else:
+      outputs = param_out
+    
+    return tf.keras.Model(inputs, outputs)
+
 def compile_model(model, loss_func, optimizer='adam', metrics=[]):
     model.compile(loss=loss_func, optimizer=optimizer, metrics=metrics)
