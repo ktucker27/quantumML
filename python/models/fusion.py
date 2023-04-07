@@ -29,6 +29,45 @@ def lsq_diff(x, y, x_window, fit_func):
 
   return new_x, new_y
 
+def init_to_onehot(x_data, y_data):
+  '''
+  Encodes initial conditions as a one-hot vector
+
+  Inputs:
+  x_data - shape = [num_params, num_times, num_qubits, 1, num_init]
+  y_data - shape = [num_params, num_times, num_probs, num_init]
+
+  Outputs:
+  onehot_x_data - shape = [num_init*num_params, num_times, num_qubits + num_init] 
+                  such that the last num_init elements in the last dimension are
+                  a one-hot vector indicating the initial state, and the first num_qubits
+                  values are the voltage data. The first index is in forward
+                  major-order, i.e. parameter value toggles first
+  onehot_y_data - shape = [num_init*num_params, num_times, num_probs, num_init + 1]
+  '''
+  # Squeeze the x data
+  x_data = tf.squeeze(x_data)
+  num_params, num_times, num_qubits, num_init = x_data.shape
+  _, _, num_probs, _ = y_data.shape
+
+  # Reshape to group params and inits
+  x_data = tf.transpose(x_data, perm=[3,0,1,2])
+  x_data = tf.reshape(x_data, [num_init*num_params, num_times, num_qubits])
+
+  y_data = tf.transpose(y_data, perm=[3,0,1,2])
+  y_data = tf.reshape(y_data, [num_init*num_params, num_times, num_probs])
+
+  # Create the one-hot encoding
+  onehot = tf.one_hot(range(num_init), num_init, dtype=x_data.dtype)
+  onehot = tf.repeat(onehot, repeats=num_params, axis=0)
+
+  # Concat one-hot with data
+  y_data = y_data[:,:,:,tf.newaxis]
+  x_data = tf.concat([x_data, onehot[:,tf.newaxis,:]*tf.ones(x_data.shape, x_data.dtype)], axis=2)
+  y_data = tf.concat([y_data, onehot[:,tf.newaxis,tf.newaxis,:]*tf.ones(y_data.shape, y_data.dtype)], axis=3)
+
+  return x_data, y_data, num_init
+
 def run_model(rho0, params, num_traj, mint, maxt, deltat=2**(-8), comp_iq=True):
   #rho0 = tf.reshape(tf.ones([num_traj,1,1], dtype=tf.complex128)*tf.constant([[1.0,0],[0,0]], dtype=tf.complex128), [num_traj,4,1])
   #rho0 = tf.reshape(tf.ones([num_traj,1,1], dtype=tf.complex128)*tf.constant([[0.5,0.5],[0.5,0.5]], dtype=tf.complex128), [num_traj,4,1])
@@ -375,21 +414,62 @@ def build_fusion_cnn_model(seq_len, num_features, grp_size, avg_size, conv_sizes
       model.add(tf.keras.layers.AveragePooling2D((avg_size, 1), strides=1, input_shape=(seq_len, num_features, grp_size)))
       first = False
     else:
-      avg_size = 10
+      avg_size = 20
     
     for conv_idx, conv_size in enumerate(conv_sizes):
       if first:
-        model.add(tf.keras.layers.Conv2D(conv_size, (avg_size,2), input_shape=(seq_len, num_features, grp_size)))
+        model.add(tf.keras.layers.Conv2D(conv_size, (avg_size, num_features), input_shape=(seq_len, num_features, grp_size)))
         first = False
       else:
         if conv_idx == 0:
-          model.add(tf.keras.layers.Conv2D(conv_size, (avg_size,2), strides=1))
+          model.add(tf.keras.layers.Conv2D(conv_size, (avg_size, num_features), strides=1))
         elif conv_idx == 1:
           model.add(tf.keras.layers.Conv2D(conv_size, (avg_size,1)))
         else:
           model.add(tf.keras.layers.Conv2D(conv_size, (avg_size,1)))
       model.add(tf.keras.layers.AveragePooling2D((avg_size,1), strides=1))
 
+    model.add(tf.keras.layers.Flatten())
+
+    for size in encoder_sizes:
+      model.add(tf.keras.layers.Dense(size, activation='relu'))
+
+    model.add(tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: max_activation_mean0(x, max_val=12)))
+
+    model.add(tf.keras.layers.RepeatVector(seq_len))
+    
+    # Add the physical RNN layer
+    model.add(tf.keras.layers.RNN(EulerRNNCell(maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0)),
+                                  stateful=False,
+                                  return_sequences=True,
+                                  name='physical_layer'))
+    
+    return model
+
+def build_fusion_rnn_model(seq_len, num_features, grp_size, avg_size, lstm_size, encoder_sizes, num_params, rho0, deltat):
+    model = tf.keras.Sequential()
+
+    first = True
+
+    if avg_size is not None:
+      model.add(tf.keras.layers.AveragePooling2D((avg_size, 1), strides=1, input_shape=(seq_len, num_features, grp_size)))
+      first = False
+    else:
+      model.add(tf.keras.layers.Input(shape=(seq_len, num_features, grp_size)))
+
+    model.add(tf.keras.layers.Reshape([seq_len - avg_size + 1, num_features]))
+
+    model.add(tf.keras.layers.LSTM(lstm_size,
+                                   batch_input_shape=(seq_len, num_features),
+                                   dropout=0.0,
+                                   stateful=False,
+                                   return_sequences=True,
+                                   name='lstm_layer'))
+
+    model.add(tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(32, activation='relu')))
+    model.add(tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(16, activation='relu')))
+
+    #model.add(tf.keras.layers.Reshape([seq_len - avg_size + 1]))
     model.add(tf.keras.layers.Flatten())
 
     for size in encoder_sizes:
