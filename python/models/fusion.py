@@ -29,6 +29,34 @@ def lsq_diff(x, y, x_window, fit_func):
 
   return new_x, new_y
 
+def split_data(data_x, data_y, train_frac):
+    steps_per_val = int(1/(1 - train_frac))
+    all_idcs = np.arange(data_x.shape[0])
+    val_idcs = all_idcs[0::steps_per_val]
+    train_idcs = np.delete(all_idcs, val_idcs)
+    
+    train_x = data_x[train_idcs, ...]
+    valid_x = data_x[val_idcs, ...]
+    
+    train_y = data_y[train_idcs, ...]
+    valid_y = data_y[val_idcs, ...]
+    
+    return train_x, valid_x, train_y, valid_y
+
+def time_thin(data, frac):
+    steps_per_val = int(1/(frac))
+    all_idcs = np.arange(data.shape[1])
+    val_idcs = all_idcs[0::steps_per_val]
+
+    return data[:,val_idcs,...]
+
+def sample_thin(data, frac):
+    steps_per_val = int(1/(frac))
+    all_idcs = np.arange(data.shape[0])
+    val_idcs = all_idcs[0::steps_per_val]
+
+    return data[val_idcs,...]
+
 def init_to_onehot(x_data, y_data):
   '''
   Encodes initial conditions as a one-hot vector
@@ -297,6 +325,13 @@ def fusion_mse_loss(y_true, y_pred):
     #return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true_ro_results[0,...], y_pred_ro_results))
     return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true_ro_results[...,:6], y_pred_ro_results[:,:,:6])) #+ reg_mult*reg_err
 
+def fusion_mse_loss_2d(y_true, y_pred):
+    # Evaluate the loss for each sample
+    y_true_ro_results = tf.cast(y_true, tf.float32)
+    y_pred_ro_results = tf.cast(y_pred, tf.float32)
+
+    return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true_ro_results[...,:-1], y_pred_ro_results[...,:-1]))
+
 def build_fusion_model(grp_size, seq_len, num_features, lstm_size, num_params):
     model = tf.keras.Sequential()
     
@@ -354,6 +389,9 @@ def build_stacked_model(grp_size, seq_len, num_features, lstm_size, rho0, deltat
 def param_metric(y_true, y_pred):
     return tf.sqrt(tf.keras.metrics.mean_squared_error(y_true[:,-1,6], y_pred[:,-1,6]))
 
+def param_loss(y_true, y_pred):
+    return tf.keras.metrics.mean_squared_error(y_true[:,0], y_pred[:,0])
+
 def max_activation(x, max_val=math.sqrt(50.0)):
   return tf.keras.activations.sigmoid(x/100.0)*max_val
 
@@ -405,7 +443,7 @@ def build_fusion_ae_model_2d(seq_len, num_features, avg_size, encoder_sizes, num
     
     return model
 
-def build_fusion_cnn_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, num_params, rho0, deltat):
+def build_fusion_cnn_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, num_params, rho0, params, deltat):
     model = tf.keras.Sequential()
     
     first = True
@@ -422,7 +460,7 @@ def build_fusion_cnn_model(seq_len, num_features, grp_size, avg_size, conv_sizes
         first = False
       else:
         if conv_idx == 0:
-          model.add(tf.keras.layers.Conv2D(conv_size, (avg_size, num_features), strides=1))
+          model.add(tf.keras.layers.Conv2D(conv_size, (avg_size, num_features), strides=2))
         elif conv_idx == 1:
           model.add(tf.keras.layers.Conv2D(conv_size, (avg_size,1)))
         else:
@@ -439,7 +477,7 @@ def build_fusion_cnn_model(seq_len, num_features, grp_size, avg_size, conv_sizes
     model.add(tf.keras.layers.RepeatVector(seq_len))
     
     # Add the physical RNN layer
-    model.add(tf.keras.layers.RNN(EulerRNNCell(maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0)),
+    model.add(tf.keras.layers.RNN(EulerRNNCell(maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params, num_traj=20),
                                   stateful=False,
                                   return_sequences=True,
                                   name='physical_layer'))
