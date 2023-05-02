@@ -387,7 +387,7 @@ def build_stacked_model(grp_size, seq_len, num_features, lstm_size, rho0, deltat
     return model
 
 def param_metric(y_true, y_pred):
-    return tf.sqrt(tf.keras.metrics.mean_squared_error(y_true[:,-1,6], y_pred[:,-1,6]))
+    return tf.sqrt(tf.keras.metrics.mean_squared_error(y_true[:,-1,-1], y_pred[:,-1,-1]))
 
 def param_loss(y_true, y_pred):
     return tf.keras.metrics.mean_squared_error(y_true[:,0], y_pred[:,0])
@@ -477,7 +477,7 @@ def build_fusion_cnn_model(seq_len, num_features, grp_size, avg_size, conv_sizes
     model.add(tf.keras.layers.RepeatVector(seq_len))
     
     # Add the physical RNN layer
-    model.add(tf.keras.layers.RNN(EulerRNNCell(maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params, num_traj=20),
+    model.add(tf.keras.layers.RNN(EulerRNNCell(maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params, num_traj=20, input_param=3),
                                   stateful=False,
                                   return_sequences=True,
                                   name='physical_layer'))
