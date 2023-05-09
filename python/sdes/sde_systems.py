@@ -393,6 +393,52 @@ class GenoisTrajSDE:
     def mqbp(self,t,x,p):
         return tf.zeros(tf.shape(x), dtype=x.dtype)
 
+class FlexSDE:
+    '''
+    Wrapper class for SDE functions that adds the result to the output of an RNN cell that
+    accounts for discrepancies between the assumed model and the true system
+    '''
+
+    def __init__(self,a,b,a_cell_real,a_cell_imag,b_cell_real,b_cell_imag):
+        self.af = a
+        self.bf = b
+        self.a_cell_real = a_cell_real
+        self.a_cell_imag = a_cell_imag
+        self.b_cell_real = b_cell_real
+        self.b_cell_imag = b_cell_imag
+
+    def init_states(self, batch_size):
+        self.a_state_real = self.a_cell_real.get_initial_state(batch_size=batch_size, dtype=tf.float32)[0]
+        self.a_state_imag = self.a_cell_imag.get_initial_state(batch_size=batch_size, dtype=tf.float32)[0]
+        self.a_carry_real = self.a_cell_real.get_initial_state(batch_size=batch_size, dtype=tf.float32)[1]
+        self.a_carry_imag = self.a_cell_imag.get_initial_state(batch_size=batch_size, dtype=tf.float32)[1]
+        self.b_state_real = self.b_cell_real.get_initial_state(batch_size=batch_size, dtype=tf.float32)[0]
+        self.b_state_imag = self.b_cell_imag.get_initial_state(batch_size=batch_size, dtype=tf.float32)[0]
+        self.b_carry_real = self.b_cell_real.get_initial_state(batch_size=batch_size, dtype=tf.float32)[1]
+        self.b_carry_imag = self.b_cell_imag.get_initial_state(batch_size=batch_size, dtype=tf.float32)[1]
+    
+    def a(self,t,x,p):
+        cell_out_real, states = self.a_cell_real(p,[tf.cast(tf.math.real(x[:,:,0]), tf.float32), self.a_carry_real])
+        self.a_state_real = states[0]
+        self.a_carry_real = states[1]
+
+        cell_out_imag, states = self.a_cell_imag(p,[tf.cast(tf.math.imag(x[:,:,0]), tf.float32), self.a_carry_imag])
+        self.a_state_imag = states[0]
+        self.a_carry_imag = states[1]
+
+        return self.af(t,x,p) + tf.complex(tf.cast(cell_out_real, tf.float64), tf.cast(cell_out_imag, tf.float64))[:,:,tf.newaxis]
+
+    def b(self,t,x,p):
+        cell_out_real, states = self.b_cell_real(p,[tf.cast(tf.math.real(x[:,:,0]), tf.float32), self.b_carry_real])
+        self.b_state_real = states[0]
+        self.b_carry_real = states[1]
+
+        cell_out_imag, states = self.b_cell_imag(p,[tf.cast(tf.math.imag(x[:,:,0]), tf.float32), self.b_carry_imag])
+        self.b_state_imag = states[0]
+        self.b_carry_imag = states[1]
+
+        return self.bf(t,x,p) + tf.complex(tf.cast(cell_out_real, tf.float64), tf.cast(cell_out_imag, tf.float64))[:,:,tf.newaxis]
+
 class RabiWeakMeasSDE:
     '''
     Equations for the stochastic master equation
