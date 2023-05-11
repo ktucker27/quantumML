@@ -170,6 +170,47 @@ def get_2d_probs_truth(liouv, rho0, deltat, maxt):
 
     return rhovec_truth, probs_truth
 
+def project_to_rho(mu, d):
+    '''
+    Projects Hermetian, trace-one but not necessarily non-negative mu to the nearest valid physical state (i.e.
+    non-negative definite) rho
+
+    Taken from algorithm for subproblem 1 in:
+    Efficient Method for Computing the Maximum-Likelihood Quantum State from Measurements with Additive Gaussian Noise
+    John A. Smolin, Jay M. Gambetta, and Graeme Smith
+    Phys. Rev. Lett. 108, 070502 - Published 17 February 2012
+
+    Inputs:
+    mu - shape = [d, d]
+
+    Outputs:
+    rho - Same shape as mu, but non-negative definite
+    '''
+
+    # Get the eigenvalues/vectors of mu
+    evals, evec = tf.linalg.eig(mu)
+    #assert(tf.reduce_max(tf.abs(tf.math.imag(evals))) < 1.0e-10)
+    evals = tf.cast(tf.math.real(evals), tf.float64)
+    evalsidx = tf.argsort(evals, direction='DESCENDING', axis=-1)
+
+    a = tf.zeros(1, dtype=tf.float64)
+    lam = tf.zeros(d, dtype=tf.float64)
+    ii = d-1
+    for eidx in tf.reverse(evalsidx, axis=[0]):
+        if tf.gather(evals, eidx) + a/tf.cast(ii+1, dtype=tf.float64) > 0.0:
+            break
+        a += tf.gather(evals, eidx)
+        ii = ii - 1
+
+    for jj in range(ii+1):
+        lam = lam + tf.one_hot(jj, d, dtype=tf.float64)*(evals[evalsidx[jj]] + a/tf.cast(ii+1, tf.float64))
+    
+    rho = tf.zeros([d,d], dtype=tf.complex128)
+    for ii in range(d):
+        rho = rho + tf.cast(lam[ii], tf.complex128)*tf.matmul(evec[:,evalsidx[ii],tf.newaxis], tf.transpose(evec[:,evalsidx[ii],tf.newaxis], conjugate=True))
+
+    return rho
+
 def unwrap_x_to_rho(x, pdim):
     '''
     Takes a tensor storing the upper triangle of rho in row major order and reshapes it
@@ -468,13 +509,16 @@ class RabiWeakMeasSDE:
         return shape = [num_traj,d,1]
         '''
         #pdim = tf.cast(-0.5 + tf.math.sqrt(0.25 + 2.0*tf.cast(tf.shape(x)[1], dtype=tf.float32)), dtype=tf.int32)
-        pdim = int(-0.5 + np.sqrt(0.25 + 2.0*tf.cast(tf.shape(x)[1], dtype=tf.float32)))
-        n = np.log2(pdim).astype(int)
+        #pdim = int(-0.5 + np.sqrt(0.25 + 2.0*tf.cast(tf.shape(x)[1], dtype=tf.float32)))
+        #n = np.log2(pdim).astype(int)
+        pdim = 4
+        n = 2
+        n_choose_2 = 1
 
         rho = unwrap_x_to_rho(x[...,0], pdim)
         
-        if tf.rank(p) == 1:
-            p = p[tf.newaxis,:]
+        #if tf.rank(p) == 1:
+        #    p = p[tf.newaxis,:]
 
         ham = tf.zeros(tf.shape(rho), rho.dtype)
 
@@ -490,7 +534,7 @@ class RabiWeakMeasSDE:
 
         # Add crosstalk terms
         #assert(tf.shape(p)[1] - 3 <= n-1)
-        for epsidx in range(3,tf.shape(p)[1]):
+        for epsidx in range(3, 3 + n_choose_2):
             _, _, szj, _, syj = [2.0*sm for sm in operations.prod_ops(epsidx - 3, 2, n)]
             _, _, szjp1, _, syjp1 = [2.0*sm for sm in operations.prod_ops(epsidx - 3 + 1, 2, n)]
 
@@ -525,13 +569,15 @@ class RabiWeakMeasSDE:
         return shape = [num_traj,d,m]
         '''
         #pdim = tf.cast(-0.5 + tf.math.sqrt(0.25 + 2.0*tf.cast(tf.shape(x)[1], dtype=tf.float32)), dtype=tf.int32)
-        pdim = int(-0.5 + np.sqrt(0.25 + 2.0*tf.cast(tf.shape(x)[1], dtype=tf.float32)))
-        n = np.log2(pdim).astype(int)
+        #pdim = int(-0.5 + np.sqrt(0.25 + 2.0*tf.cast(tf.shape(x)[1], dtype=tf.float32)))
+        #n = np.log2(pdim).astype(int)
+        pdim = 4
+        n = 2
 
         rho = unwrap_x_to_rho(x[...,0], pdim)
 
-        if tf.rank(p) == 1:
-            p = p[tf.newaxis,:]
+        #if tf.rank(p) == 1:
+        #    p = p[tf.newaxis,:]
 
         pten = tf.cast(tf.pow(0.5*tf.dtypes.complex(p[:,1], 0.0),0.5), dtype=tf.complex128)
         pten = tf.expand_dims(pten, axis=1)
