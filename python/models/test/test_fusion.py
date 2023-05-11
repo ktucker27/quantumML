@@ -163,7 +163,7 @@ class TestRunModel2d(unittest.TestCase):
         num_traj=100
         t0 = time.time()
         print('Running run_model_2d...')
-        rhovec, _, _, tvec = fusion.run_model_2d(rho0, params, num_traj, mint = 0.0, maxt = 1.0, deltat=2**(-8), comp_i=False)
+        rhovec, _, _, tvec = fusion.run_model_2d(rho0, params[np.newaxis,:], num_traj, mint = 0.0, maxt = 1.0, deltat=2**(-8), comp_i=False)
         print(f'Done. Run time (s): {time.time() - t0}')
         probs = sde_systems.get_2d_probs(rhovec)
 
@@ -197,7 +197,7 @@ class TestRunModel2d(unittest.TestCase):
             num_traj=100
             t0 = time.time()
             print('Running run_model_2d...')
-            rhovec, _, _, _ = fusion.run_model_2d(rho0, params, num_traj, mint=mint, maxt=maxt, deltat=deltat, comp_i=False)
+            rhovec, _, _, _ = fusion.run_model_2d(rho0, params[np.newaxis,:], num_traj, mint=mint, maxt=maxt, deltat=deltat, comp_i=False)
             print(f'Done. Run time (s): {time.time() - t0}')
             probs = sde_systems.get_2d_probs(rhovec)
 
