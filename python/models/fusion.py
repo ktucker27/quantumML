@@ -394,7 +394,7 @@ def param_loss(y_true, y_pred):
 
 def param_loss_mp(y_true, y_pred):
     return tf.keras.metrics.mean_squared_error(tf.reshape(y_true,[-1]), tf.reshape(y_pred,[-1]))
-  
+
 def max_activation(x, max_val=math.sqrt(50.0)):
   return tf.keras.activations.sigmoid(x/100.0)*max_val
 
