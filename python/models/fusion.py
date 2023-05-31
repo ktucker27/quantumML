@@ -332,6 +332,22 @@ def fusion_mse_loss_2d(y_true, y_pred):
 
     return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true_ro_results[...,:-1], y_pred_ro_results[...,:-1]))
 
+def fusion_mse_loss_subsamp(y_true, y_pred):
+    # Evaluate the loss for each sample
+    stride = tf.cast(tf.round(tf.shape(y_pred)[1]/tf.shape(y_true)[1]), tf.int32)
+    y_true_ro_results = tf.cast(y_true, tf.float32)
+    y_pred_ro_results = tf.cast(y_pred, tf.float32)[:,::stride,...]
+    
+    return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true_ro_results[...,:-1], y_pred_ro_results[...,:-1]))
+
+def fusion_mse_loss_single(y_true, y_pred):
+    # Evaluate the loss for each sample
+    stride = tf.cast(tf.round(tf.shape(y_pred)[1]/tf.shape(y_true)[1]), tf.int32)
+    y_true_ro_results = tf.cast(y_true, tf.float32)
+    y_pred_ro_results = tf.cast(y_pred, tf.float32)[:,::stride,...]
+    
+    return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true_ro_results[...,:6], y_pred_ro_results[...,:6]))
+
 def build_fusion_model(grp_size, seq_len, num_features, lstm_size, num_params):
     model = tf.keras.Sequential()
     

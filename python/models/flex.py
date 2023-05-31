@@ -56,7 +56,7 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     emod = sde_solve.EulerMultiDModel(mint, maxt, deltat, self.flex.a, self.flex.b, d, m, params.shape[1], params, [True, True, True, True], create_params=False)
     xvec = emod(x0, num_traj, wvec, params)
     rhovec = sde_systems.unwrap_x_to_rho(tf.reshape(tf.transpose(xvec, perm=[0,2,1]), [-1,10]), self.pdim)
-    rhovec = tf.map_fn(lambda x: sde_systems.project_to_rho(x, self.pdim), rhovec/tf.linalg.trace(rhovec)[:,tf.newaxis,tf.newaxis])
+    #rhovec = tf.map_fn(lambda x: sde_systems.project_to_rho(x, self.pdim), rhovec/tf.linalg.trace(rhovec)[:,tf.newaxis,tf.newaxis])
     rhovec = tf.reshape(rhovec, [num_traj,-1,self.pdim,self.pdim])
 
     return rhovec
@@ -84,9 +84,13 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
 
     # Average over trajectories
     rhovecs = tf.reduce_mean(tf.reshape(rhovecs, [self.num_traj,-1,tf.shape(rhovecs)[1],tf.shape(rhovecs)[2],tf.shape(rhovecs)[3]]), axis=0)
-    
+
+    # Project onto the space of physical states
+    rhovecs = rhovecs[:,-1,:,:]
+    rhovecs = tf.map_fn(lambda x: sde_systems.project_to_rho(x, self.pdim), rhovecs/tf.linalg.trace(rhovecs)[:,tf.newaxis,tf.newaxis])
+
     # Calculate probabilities
-    probs = tf.math.real(sde_systems.get_2d_probs(rhovecs)[:,-1,:])
+    probs = tf.math.real(sde_systems.get_2d_probs(rhovecs[:,tf.newaxis,:,:])[:,-1,:])
     #probs = tf.math.maximum(probs,0)
     #probs = tf.math.minimum(probs,1.0)
 
@@ -94,7 +98,7 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     #mask = tf.math.logical_not(tf.math.is_nan(tf.reduce_max(tf.math.real(probs), axis=[1])))
     #probs = tf.boolean_mask(probs, mask)
 
-    return tf.concat((probs, tf.cast(inputs, dtype=tf.float64)), axis=1), [rhovecs[:,-1,:,:]]
+    return tf.concat((probs, tf.cast(inputs, dtype=tf.float64)), axis=1), [rhovecs]
 
 def build_flex_model(seq_len, lstm_size, rho0, params, deltat):
   model = tf.keras.Sequential()
