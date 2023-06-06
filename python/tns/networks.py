@@ -40,6 +40,13 @@ class MPS:
     def num_sites(self):
         return len(self.tensors)
 
+    def size(self):
+        size = 0
+        for ten in self.tensors:
+            size += tf.size(ten)
+
+        return size
+
     def set_tensor(self, ii, t, val=None):
         if val is None:
             val = True
