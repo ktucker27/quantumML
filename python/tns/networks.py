@@ -4,9 +4,9 @@ from scipy import optimize
 import operations
 import tns_math
 
-class MPS:
+class MPS(tf.Module):
 
-    def __init__(self, tensors):
+    def __init__(self, tensors, eager=False):
         '''
         MPS: Class for representing a matrix product state
              tensors: A cell row vector of rank 3 tensors indexed as follows
@@ -18,11 +18,17 @@ class MPS:
         '''
         
         self.tensors = []
-        for ten in tensors:
-            self.tensors.append(ten)
+        self.eager = eager
+        for idx, ten in enumerate(tensors):
+            if self.eager:
+                self.tensors.append(ten)
+            else:
+                self.tensors.append(tf.Variable(tf.zeros(tf.shape(ten), ten.dtype), trainable=False))
+                self.tensors[idx].assign(ten)
             
         # Validate the incoming tensors
-        self.validate()
+        if self.eager:
+            self.validate()
 
     def validate(self):
         n = len(self.tensors)
@@ -36,6 +42,10 @@ class MPS:
             
             if self.tensors[iim1].shape[1] != t.shape[0]:
                 raise Exception(f'Bond dimension mismatch between sites {iim1} and {ii}')
+
+    def assign(self, mps):
+        for ii, t in enumerate(self.tensors):
+            t.assign(mps.tensors[ii])
 
     def num_sites(self):
         return len(self.tensors)
@@ -51,8 +61,8 @@ class MPS:
         if val is None:
             val = True
         
-        if tf.rank(t) != 3:
-            raise Exception(f'Expected rank 3 tensor at site {ii}')
+        #if tf.rank(t) != 3:
+        #    raise Exception(f'Expected rank 3 tensor at site {ii}')
         
         n = self.num_sites()
         
@@ -69,34 +79,39 @@ class MPS:
         
         if val and self.tensors[iip1].shape[0] != t.shape[1]:
             raise Exception(f'Bond dimension mismatch between sites {ii} and {iip1}')
-        
-        self.tensors[ii] = t
+
+        if self.eager:
+            self.tensors[ii] = t
+        else:
+            self.tensors[ii].assign(t)
     
     def substate(self, indices):
         ms = []
         for idx in indices:
             ms.append(tf.identity(self.tensors[idx]))
         
-        return MPS(ms)
+        return MPS(ms, eager=self.eager)
 
     def dagger(self):
         ms = []
         for ii in range(self.num_sites()):
             ms.append(tf.math.conj(tf.identity(self.tensors[ii])))
 
-        return MPS(ms)
+        return MPS(ms, eager=self.eager)
+
+    def dagger_equals(self):
+        for ii in range(self.num_sites()):
+            self.tensors[ii].assign(tf.math.conj(self.tensors[ii]))
 
     def inner(self, mps):
         if mps.num_sites() != self.num_sites():
             raise Exception('Inner product attempted between states of different size')
         
-        mps = mps.dagger()
-        
         n = self.num_sites()
-        ten = tf.tensordot(self.tensors[0], mps.tensors[0], [[2],[2]])
+        ten = tf.tensordot(self.tensors[0], tf.math.conj(mps.tensors[0]), [[2],[2]])
         for ii in range(1,n):
             ten = tf.tensordot(ten, self.tensors[ii], [[1],[0]])
-            ten = tf.tensordot(ten, mps.tensors[ii], [[2,4],[0,2]])
+            ten = tf.tensordot(ten, tf.math.conj(mps.tensors[ii]), [[2,4],[0,2]])
             
             if ii != n-1 or tf.rank(ten) > 0:
                 ten = tf.transpose(ten, perm=[0,2,1,3])
@@ -104,8 +119,8 @@ class MPS:
         if tf.rank(ten) != 0:
             ten = operations.trace(ten, [[0,2],[1,3]])
             
-            if tf.rank(ten) != 0:
-                raise Exception('Expected a scalar at the end of an inner product')
+            #if tf.rank(ten) != 0:
+            #    raise Exception('Expected a scalar at the end of an inner product')
         
         return ten
 
@@ -139,12 +154,9 @@ class MPS:
         n = self.num_sites()
 
         # Contract across all sites
-        for ii in range(n):
-            if ii == 0:
-                ten = self.tensors[ii]
-            else:
-                r = tf.rank(ten)
-                ten = tf.tensordot(ten, self.tensors[ii], [[r-2], [0]])
+        ten = self.tensors[0]
+        for ii in range(1,n):
+            ten = tf.tensordot(ten, self.tensors[ii], axes=[[-2], [0]])
 
         # Trace out the boundary dimensions
         r = tf.rank(ten)
@@ -186,7 +198,7 @@ class MPS:
             diff = a - tf.eye(self.tensors[ii].shape[1], dtype=a.dtype)
             if tf.cast(tf.reduce_max(tf.abs(diff)), dtype=tf.float64) > tol:
                 e = False
-                break
+                #break
         
         return e
     
@@ -200,7 +212,7 @@ class MPS:
             diff = a - tf.eye(self.tensors[ii].shape[0], dtype=a.dtype)
             if tf.cast(tf.reduce_max(tf.abs(diff)), dtype=tf.float64) > tol:
                 e = False
-                break
+                #break
         
         return e
     
@@ -214,12 +226,20 @@ class MPS:
                 s, u, v = tf.linalg.svd(m)
             s = tf.cast(tf.linalg.diag(s), dtype=v.dtype)
 
-            self.tensors[ii] = tf.transpose(tf.reshape(u, [mdims[0], mdims[2], -1]), perm=[0,2,1])
+            ten = tf.transpose(tf.reshape(u, [mdims[0], mdims[2], -1]), perm=[0,2,1])
+            if self.eager:
+                self.tensors[ii] = ten
+            else:
+                self.tensors[ii].assign(ten)
             
             # Update the next tensor
             if ii < self.num_sites() - 1:
                 next_m = tf.matmul(s, tf.transpose(v, conjugate=True))
-                self.tensors[ii+1] = tf.tensordot(next_m, self.tensors[ii+1], [[1],[0]])
+                ten = tf.tensordot(next_m, self.tensors[ii+1], [[1],[0]])
+                if self.eager:
+                    self.tensors[ii+1] = ten
+                else:
+                    self.tensors[ii+1].assign(ten)
     
     def right_normalize(self, tol=0.0):
         for ii in range(self.num_sites()-1,-1,-1):
@@ -231,13 +251,21 @@ class MPS:
                 s, u, v = tf.linalg.svd(m)
             s = tf.cast(tf.linalg.diag(s), dtype=v.dtype)
 
-            self.tensors[ii] = tf.reshape(tf.transpose(v, conjugate=True), [-1,mdims[1],mdims[2]])
+            ten = tf.reshape(tf.transpose(v, conjugate=True), [-1,mdims[1],mdims[2]])
+            if self.eager:
+                self.tensors[ii] = ten
+            else:
+                self.tensors[ii].assign(ten)
             
             # Update the next tensor
             if ii > 0:
                 next_m = tf.matmul(u, s)
                 next_m = tf.tensordot(self.tensors[ii-1], next_m, [[1],[0]])
-                self.tensors[ii-1] = tf.transpose(next_m, perm=[0,2,1])
+                ten = tf.transpose(next_m, perm=[0,2,1])
+                if self.eager:
+                    self.tensors[ii-1] = ten
+                else:
+                    self.tensors[ii-1].assign(ten)
     
     def mps_zeros(n,bdim,pdim,obc):
         '''
@@ -622,9 +650,16 @@ def build_init_purification(n, pdim, bond=None):
         else:
             ms[2*ii+1] = tf.concat([T2, tf.zeros([T2.shape[0], bond-1, T2.shape[2]], dtype=T2.dtype)], axis=1)
 
+        # Trim excess bond dimension given the position
+        trim0 = min([pdim**(2*ii),pdim**(2*n-2*ii)])
+        trim1 = min([pdim**(2*ii+1),pdim**(2*n-2*ii-1)])
+        trim2 = min([pdim**(2*ii+2),pdim**(2*n-2*ii-2)])
+        ms[2*ii] = ms[2*ii][:trim0,:trim1,:]
+        ms[2*ii+1] = ms[2*ii+1][:trim1,:trim2,:]
+
     return MPS(ms)
 
-def apply_mpo(mpo, mps):
+def apply_mpo(mpo, mps, mpo_mps=None):
     n = mps.num_sites()
 
     ms = []
@@ -635,4 +670,10 @@ def apply_mpo(mpo, mps):
         
         ms.append(T2)
 
-    return MPS(ms)
+    if mpo_mps is None:
+        return MPS(ms, eager = mps.eager)
+    
+    for idx, ten in enumerate(ms):
+        mpo_mps.set_tensor(idx, ten, val=False)
+
+    return mpo_mps

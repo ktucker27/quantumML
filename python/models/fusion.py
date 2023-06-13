@@ -414,8 +414,8 @@ def param_loss_mp(y_true, y_pred):
 def max_activation(x, max_val=math.sqrt(50.0)):
   return tf.keras.activations.sigmoid(x/100.0)*max_val
 
-def max_activation_mean0(x, max_val=math.sqrt(50.0)):
-  return tf.keras.activations.sigmoid(x/100.0)*max_val - 0.5*max_val
+def max_activation_mean0(x, max_val=math.sqrt(50.0), xscale=100.0):
+  return tf.keras.activations.sigmoid(x/xscale)*max_val - 0.5*max_val
 
 def build_fusion_ae_model(seq_len, num_features, encoder_sizes, num_params, rho0, deltat):
     model = tf.keras.Sequential()

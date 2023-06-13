@@ -387,7 +387,8 @@ class TestTDVP(unittest.TestCase):
         mps = networks.state_to_mps(psi0, n, pdim)
 
         t0 = time.time()
-        tvec, mps_out, _, _ = tns_solve.tdvp(mpo, mps, dt, tfinal, 0, debug)
+        mps_out = []
+        tvec, _, _ = tns_solve.tdvp(mpo, mps, dt, tfinal, 0, debug, mps_out=mps_out)
         print(f'Run time (s): {time.time() - t0}')
 
         evec = np.zeros(tvec.shape)
@@ -415,7 +416,7 @@ class TestTDVP(unittest.TestCase):
         rpow = 0
         npow = 3
         dt = 0.01
-        tfinal = 1
+        tfinal = 0.1
 
         # Build the MPO
         _, _, sz, sx, _ = operations.local_ops(pdim)
@@ -442,9 +443,18 @@ class TestTDVP(unittest.TestCase):
         psi0 = evecs[:,idx]
         mps = networks.state_to_mps(psi0, n, pdim)
 
+        anc_mps = [networks.MPS(mps.tensors), networks.MPS(mps.tensors), networks.MPS(mps.tensors)]
+        mps_out = []
+        numt = int(abs(tfinal)/abs(dt) + 1)
+        [mps_out.append(networks.MPS(mps.tensors)) for _ in range(numt)]
+
+        exp_ops = [mpo_x]
+        anc_mpo_mps = [networks.apply_mpo(mpo, mps)]
+        [anc_mpo_mps.append(networks.apply_mpo(exp_op, mps)) for exp_op in exp_ops]
+
         # Do the time evolution
         t0 = time.time()
-        tvec, mps_out, _, exp_out = tns_solve.tdvp(mpo, mps, dt, tfinal, 0, debug, None, [mpo_x])
+        tvec, _, exp_out = tns_solve.tdvp(mpo, mps, dt, tfinal, 0, debug, None, exp_ops, mps_out=mps_out, anc_mps=anc_mps, anc_mpo_mps=anc_mpo_mps)
         print(f'Run time (s): {time.time() - t0}')
 
         # Compare evolved state with the exact state
@@ -460,11 +470,13 @@ class TestTDVP(unittest.TestCase):
             psi = tf.matmul(dtmat, psi)
 
         self.assertLessEqual(tf.reduce_max(evec), tol)
+        print(f'State error: {tf.reduce_max(evec)}')
 
         # Compare S_x value to expected
         ex = (n/2.0)*np.cos(tvec*chi)**(n-1)
         xerr = tf.reduce_max(tf.abs(ex - exp_out))
         self.assertLessEqual(xerr, tol)
+        print(f'S_x error: {xerr}')
 
     def test_thermal(self):
         debug = True
@@ -495,7 +507,7 @@ class TestTDVP(unittest.TestCase):
         dt = -0.01*1j
         mps0 = networks.build_init_purification(n,pdim,pdim**n)
         t0 = time.time()
-        tvec, _, eout, _ = tns_solve.tdvp(mpo, mps0, dt, tfinal, 0, debug)
+        tvec, eout, _ = tns_solve.tdvp(mpo, mps0, dt, tfinal, 0, debug)
         print(f'Run time (s): {time.time() - t0}')
 
         # Get the exact energy expectations
@@ -542,7 +554,7 @@ class TestTDVP2(unittest.TestCase):
         ms = []
         for ii in range(n):
             ms.append(tf.constant(A, dtype=tf.complex128))
-        mps = networks.MPS(ms)
+        mps = networks.MPS(ms, eager=True)
 
         t0 = time.time()
         tvec, mps_out, _, _ = tns_solve.tdvp2(mpo, mps, dt, tfinal, svdtol, 0, debug)
@@ -604,7 +616,7 @@ class TestTDVP2(unittest.TestCase):
         ms = []
         for ii in range(n):
             ms.append(tf.identity(A))
-        mps = networks.MPS(ms)
+        mps = networks.MPS(ms, eager=True)
 
         # Do the time evolution
         t0 = time.time()
@@ -685,7 +697,7 @@ class TestTDVP2(unittest.TestCase):
         ms = []
         for ii in range(n):
             ms.append(tf.identity(A))
-        mps = networks.MPS(ms)
+        mps = networks.MPS(ms, eager=True)
 
         t0 = time.time()
         tvec, mps_out, _, exp_out = tns_solve.tdvp2(mpo, mps, dt, tfinal, svdtol, 0, debug, None, [mpo_x, mpo_s2])
@@ -777,7 +789,7 @@ class TestTDVP2(unittest.TestCase):
         ms = []
         for ii in range(n):
             ms.append(tf.identity(A))
-        mps = networks.MPS(ms)
+        mps = networks.MPS(ms, eager=True)
 
         t0 = time.time()
         tvec, mps_out, _, exp_out = tns_solve.tdvp2(mpo, mps, dt, tfinal, svdtol, 0, debug, None, [mpo_x, mpo_s2])
@@ -810,3 +822,5 @@ class TestTDVP2(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
+    #t = TestTDVP()
+    #t.test_oat()

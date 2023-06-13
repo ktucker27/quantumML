@@ -45,10 +45,18 @@ def lanczos_mps(L, R, ops, b, numsteps):
     bvec = tf.reshape(b, [-1])
     qmat = bvec/tf.linalg.norm(bvec)
     qmat = tf.reshape(qmat, [-1,1])
-    alphas = None
-    betas = None
-    beta = 0
-    for i in range(numsteps+1):
+    alphas = tf.zeros([1], dtype=tf.complex128)
+    betas = tf.zeros([1], dtype=tf.complex128)
+    ab_set = False
+    alpha = tf.constant(0.0, dtype=tf.complex128)
+    beta = tf.constant(0.0, dtype=tf.complex128)
+    for i in tf.range(numsteps+1):
+        tf.autograph.experimental.set_loop_options(
+            shape_invariants=[(qmat, tf.TensorShape([None, None])),
+                              (alphas, tf.TensorShape([None])),
+                              (betas, tf.TensorShape([None])),
+                              (b, tf.TensorShape(None))]
+        )
         # In the following, order of operations are given in terms of the
         # dimensions:
         #
@@ -77,7 +85,7 @@ def lanczos_mps(L, R, ops, b, numsteps):
         elif num_sites == 2:
             b = tf.transpose(b, perm=[0,3,1,2])
         
-        bdims = b.shape
+        bdims = tf.shape(b)
         z = tf.reshape(b, [-1])
         alpha = tf.squeeze(tf.matmul(tf.math.conj(qmat[:,i][tf.newaxis,:]), z[:,tf.newaxis]))
         
@@ -93,13 +101,14 @@ def lanczos_mps(L, R, ops, b, numsteps):
             numsteps = i
             break
         qmat = tf.concat((qmat, z[:,tf.newaxis]/beta), axis=1)
-        
-        if alphas is None:
+
+        ab_set = True
+        if i == 0:
             alphas = tf.ones([1], dtype=tf.complex128)*alpha
         else:
             alphas = tf.concat((alphas, [alpha]), axis=0)
 
-        if betas is None:
+        if i == 0:
             betas = tf.ones([1], dtype=tf.complex128)*beta
         else:
             betas = tf.concat((betas, [beta]), axis=0)
@@ -107,12 +116,12 @@ def lanczos_mps(L, R, ops, b, numsteps):
         b = qmat[:,i+1]
         b = tf.reshape(b, bdims)
 
-    if alphas is None:
+    if not ab_set:
         alphas = tf.ones([1], dtype=tf.complex128)*alpha
     else:
         alphas = tf.concat((alphas, [alpha]), axis=0)
 
-    if betas is not None:
+    if ab_set:
         beta_mat = tf.linalg.diag(tf.concat(([0.0],betas), axis=0))
         sup = tf.roll(beta_mat, shift=-1, axis=0)
         sub = tf.roll(beta_mat, shift=-1, axis=1)
@@ -131,10 +140,10 @@ def lanczos_expm_mps(L, R, ops, v, m, fun=None):
     if fun is None:
         fun = lambda x: tf.exp(x)
 
-    n = np.prod(v.shape)
+    #n = tf.reduce_prod(v.shape)
 
-    if m >= n:
-        raise Exception('Need m < n')
+    #if m >= n:
+    #    raise Exception('Need m < n')
         
     tmat, qmat, _, _ = lanczos_mps(L, R, ops, v, m)
         
@@ -307,7 +316,8 @@ def dmrg(mpo, mps, tol, maxit, eps=1e-12):
 
     return networks.MPS(ms.tensors)
 
-def tdvp(mpo, mps, dt, tfinal, eps=0.0, debug=False, ef=None, exp_ops=[]):
+#@tf.function
+def tdvp(mpo, mps, dt, tfinal, eps=0.0, debug=False, ef=None, exp_ops=[], anc_mps=[None, None], anc_mpo_mps=[], mps_out=[]):
     '''
     An implementation of the time-dependent variational principle algortihm found in
     J. Haegeman, F. Verstraete, et. al "Unifying time evolution and optimization with matrix product states" (2015)
@@ -322,45 +332,69 @@ def tdvp(mpo, mps, dt, tfinal, eps=0.0, debug=False, ef=None, exp_ops=[]):
     debug - Allow verbose output if true
     ef - If provided, evolution will stop once this energy threshold is crossed
     exp_ops - List of operators in MPO form to perform expected value calculations for at each time step
+    anc_mps - Two ancillary MPS objects, needed when running in graph mode
+    anc_mpo_mps - Ancillary MPS objects, one for the energy plus one for each exp_ops, needed when running in graph mode
+    mps_out - List of MPS states at each time
 
     Returns:
     tvec - Vector of times
-    mps_out - List of MPS states at each time
     eout - Expected energy values at each time
     exp_out - [len(exp_ops), num_times] matrix of expected operator values
     '''
     tol = 1e-12
 
+    ms = anc_mps[0]
+    msd = anc_mps[1]
+
+    if len(anc_mpo_mps) == 0:
+        [anc_mpo_mps.append(None) for _ in range(len(exp_ops)+1)]
+
     numt = int(abs(tfinal)/abs(dt) + 1)
     tvec = np.zeros(numt, dtype=np.array(dt).dtype)
-    mps_out = [None for _ in range(numt)]
-    eout = np.zeros(numt, dtype=np.cdouble)
-    exp_out = np.zeros([len(exp_ops), numt], dtype=np.cdouble)
+    if len(mps_out) == 0:
+        [mps_out.append(None) for _ in range(numt)]
+    exp_out = tf.zeros([len(exp_ops), numt])
 
     n = mps.num_sites()
 
     if np.imag(dt) == 0:
-        lanczos_fun = lambda x: np.exp(1j*x)
+        lanczos_fun = lambda x: tf.exp(1j*x)
         lanczos_mult = 1.0
     else:
-        lanczos_fun = lambda x: np.exp(x)
+        lanczos_fun = lambda x: tf.exp(x)
         lanczos_mult = 1.0j
 
     # Right normalize the state if it's not already
-    ms = mps.substate(range(n))
+    if ms is None:
+        ms = mps.substate(range(n))
+    else:
+        ms.assign(mps)
     if not ms.is_right_normal(tol):
         ms.left_normalize()
         ms.right_normalize()
 
-    mps_out[0] = networks.MPS(ms.tensors)
-    msd = ms.dagger()
+    if mps_out[0] is None:
+        mps_out[0] = networks.MPS(ms.tensors)
+    else:
+        mps_out[0].assign(ms)
+
+    if msd is None:
+        msd = ms.dagger()
+    else:
+        msd.assign(ms)
+        msd.dagger_equals()
 
     # Compute the initial energy
-    mpo_ms = networks.apply_mpo(mpo, ms)
-    eout[0] = ms.inner(mpo_ms)/ms.inner(ms)
+    mpo_ms = networks.apply_mpo(mpo, ms, anc_mpo_mps[0])
+    eout = (ms.inner(mpo_ms)/ms.inner(ms))[tf.newaxis]
     for exp_idx in range(len(exp_ops)):
-        mpo_ms = networks.apply_mpo(exp_ops[exp_idx], ms)
-        exp_out[exp_idx, 0] = ms.inner(mpo_ms)/ms.inner(ms)
+        mpo_ms = networks.apply_mpo(exp_ops[exp_idx], ms, anc_mpo_mps[exp_idx+1])
+        val = (ms.inner(mpo_ms)/ms.inner(ms))[tf.newaxis]
+        if exp_idx == 0:
+            it_exp_out = val
+        else:
+            it_exp_out = tf.stack([it_exp_out, val], axis=0)
+        exp_out = it_exp_out[:,tf.newaxis]
 
     # If we received a final energy, track the sign of the delta
     # so we know when to stop
@@ -398,14 +432,16 @@ def tdvp(mpo, mps, dt, tfinal, eps=0.0, debug=False, ef=None, exp_ops=[]):
             # Get the R tensor
             TR = R[ii]
             if ii < n-1:
-                while TR.shape[-1] == 1 and tf.rank(TR) > 3:
-                    TR = tf.squeeze(TR, axis=-1)
+                TR = tf.squeeze(TR, axis=[3,4,5])
+                #while TR.shape[-1] == 1 and tf.rank(TR) > 3:
+                #    TR = tf.squeeze(TR, axis=-1)
             
             # Get the L tensor
             TL = L[ii]
             if ii > 0:
-                while TL.shape[-1] == 1 and tf.rank(TL) > 3:
-                    TL = tf.squeeze(TL, axis=-1)
+                TL = tf.squeeze(TL, axis=[3,4,5])
+                #while TL.shape[-1] == 1 and tf.rank(TL) > 3:
+                #    TL = tf.squeeze(TL, axis=-1)
             
             # Evolve according to H
             v = ms.tensors[ii]
@@ -458,8 +494,8 @@ def tdvp(mpo, mps, dt, tfinal, eps=0.0, debug=False, ef=None, exp_ops=[]):
                 
                 if nextidx <= n-1:
                     TL = L[nextidx]
-                    while TL.shape[-1] == 1 and tf.rank(TL) > 3:
-                        TL = tf.squeeze(TL, axis=-1)
+                    if tf.rank(TL) > 3:
+                        TL = tf.squeeze(TL, axis=[3,4,5])
             else:
                 if ii == n-1:
                     # Initialize the R list
@@ -475,19 +511,23 @@ def tdvp(mpo, mps, dt, tfinal, eps=0.0, debug=False, ef=None, exp_ops=[]):
                 
                 if nextidx >= 0:
                     TR = R[nextidx]
-                    while TR.shape[-1] == 1 and tf.rank(TR) > 3:
-                        TR = tf.squeeze(TR, axis=-1)
+                    if tf.rank(TR) > 3:
+                        TR = tf.squeeze(TR, axis=[3,4,5])
             
             if nextidx >= 0 and nextidx <= n-1:
                 # Evolve the C tensor backwards in time and contract it into
                 # the next two site block
                 
                 # Evolve according to K
-                mdims = C.shape
+                mdims = tf.shape(C)
                 nv = tf.math.sqrt(tf.reduce_sum(tf.math.conj(C)*C))
                 C = C/nv
-                num_elms = np.prod(mdims)
-                lsteps = min([max([int(num_elms*0.05),2]), num_elms-1, 10])
+                if mdims[0] is None:
+                    num_elms = 1
+                else:
+                    num_elms = tf.reduce_prod(mdims)
+                num_elms = tf.cast(num_elms, tf.float64)
+                lsteps = tf.reduce_min([tf.reduce_max([tf.cast(tf.floor(num_elms*0.05), tf.int32),2]), tf.cast(num_elms-1, tf.int32), 10])
                 v = lanczos_expm_mps(TL*(lanczos_mult*dt/2.0), TR, [], C, lsteps, lanczos_fun)*nv
                 
                 C = tf.reshape(v, mdims)
@@ -503,12 +543,13 @@ def tdvp(mpo, mps, dt, tfinal, eps=0.0, debug=False, ef=None, exp_ops=[]):
                 ms.set_tensor(nextidx, next_m, False)
                 msd.set_tensor(nextidx, tf.math.conj(next_m), False)
             
-            ms.validate()
-            msd.validate()
+            if ms.eager:
+                ms.validate()
+                msd.validate()
 
-            if np.imag(dt) == 0:
-                assert(abs(ms.inner(ms) - 1.0) < 1e-6)
-                assert(abs(msd.inner(msd) - 1.0) < 1e-6)
+                if np.imag(dt) == 0:
+                    assert(abs(ms.inner(ms) - 1.0) < 1e-6)
+                    assert(abs(msd.inner(msd) - 1.0) < 1e-6)
         
         # Flip the sweep direction
         if idxinc > 0:
@@ -526,13 +567,22 @@ def tdvp(mpo, mps, dt, tfinal, eps=0.0, debug=False, ef=None, exp_ops=[]):
             
             # Update output variables
             tvec[itidx] = t
-            mps_out[itidx] = networks.MPS(ms.tensors)
+            if mps_out[itidx] is None:
+                mps_out[itidx] = networks.MPS(ms.tensors)
+            else:
+                mps_out[itidx].assign(ms)
             
-            mpo_ms = networks.apply_mpo(mpo, ms)
-            eout[itidx] = ms.inner(mpo_ms)/ms.inner(ms)
+            mpo_ms = networks.apply_mpo(mpo, ms, anc_mpo_mps[0])
+            eout = tf.concat([eout,(ms.inner(mpo_ms)/ms.inner(ms))[tf.newaxis]], axis=0)
             for exp_idx in range(len(exp_ops)):
-                mpo_ms = networks.apply_mpo(exp_ops[exp_idx], ms)
-                exp_out[exp_idx, itidx] = ms.inner(mpo_ms)/ms.inner(ms)
+                mpo_ms = networks.apply_mpo(exp_ops[exp_idx], ms, anc_mpo_mps[exp_idx+1])
+                val = (ms.inner(mpo_ms)/ms.inner(ms))[tf.newaxis]
+                if exp_idx == 0:
+                    it_exp_out = val
+                else:
+                    it_exp_out = tf.stack([it_exp_out, val], axis=0)
+            if len(exp_ops) > 0:
+                exp_out = tf.concat([exp_out, it_exp_out[:,tf.newaxis]], axis=1)
             
             if de != 0:
                 if de != np.sign(eout[itidx] - ef):
@@ -545,7 +595,7 @@ def tdvp(mpo, mps, dt, tfinal, eps=0.0, debug=False, ef=None, exp_ops=[]):
                 if itidx % 10 == 0:
                     print(f't = {t}')
 
-    return tvec, mps_out, eout, exp_out
+    return tvec, eout, exp_out
 
 def tdvp2(mpo, mps, dt, tfinal, eps=0.0, maxrank=0, debug=False, ef=None, exp_ops=[]):
     '''
@@ -593,7 +643,7 @@ def tdvp2(mpo, mps, dt, tfinal, eps=0.0, maxrank=0, debug=False, ef=None, exp_op
         ms.left_normalize()
         ms.right_normalize()
 
-    mps_out[0] = networks.MPS(ms.tensors)
+    mps_out[0] = networks.MPS(ms.tensors, eager=True)
     msd = ms.dagger()
 
     # Compute the initial energy
@@ -790,7 +840,7 @@ def tdvp2(mpo, mps, dt, tfinal, eps=0.0, maxrank=0, debug=False, ef=None, exp_op
             
             # Update output variables
             tvec[itidx] = t
-            mps_out[itidx] = networks.MPS(ms.tensors)
+            mps_out[itidx] = networks.MPS(ms.tensors, eager=True)
             
             mpo_ms = networks.apply_mpo(mpo, ms)
             eout[itidx] = ms.inner(mpo_ms)/ms.inner(ms)

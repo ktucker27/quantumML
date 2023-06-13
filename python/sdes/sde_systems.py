@@ -298,6 +298,19 @@ def suph_herm_p(l,rho):
 
     return t1 + t2 - 2.0*t3
 
+class ZeroSDE:
+    '''
+    params = [Omega, Gamma, eta] when solving for rho
+           = [Omega, Gamma, eta, rho_vec] when solving for I/Q
+    '''
+
+    def a(t,x,p):
+        return tf.zeros(tf.shape(x), dtype=x.dtype)
+
+    def b(t,x,p):
+        n = 2 # TODO - Remove hardcoded number of qubits
+        return tf.zeros([tf.shape(x)[0],tf.shape(x)[1],n], dtype=x.dtype)
+
 class GenoisSDE:
     '''
     params = [Omega, Gamma, eta] when solving for rho

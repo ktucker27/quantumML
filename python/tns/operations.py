@@ -3,18 +3,32 @@ import tensorflow as tf
 
 def get_trunc_idx(v, eps):
     v2 = v**2
-    d = np.sum(v2)
-    sv = np.zeros(v.shape)
-    for ii in range(v.shape[0]):
-        sv[ii] = np.sqrt(np.sum(v2[ii:])/d)
-    idxvec = np.argwhere(sv < eps)
-    if idxvec.shape[0] == 0:
-        idx = v.shape[0]
+    d = tf.reduce_sum(v2)
+    n = tf.shape(v)[0]
+    mask = tf.ones([1,n], v.dtype)
+    for ii in tf.range(1,n):
+      tf.autograph.experimental.set_loop_options(
+        shape_invariants=[(mask, tf.TensorShape([None, None]))]
+      )
+      mask_row = tf.constant([0], v.dtype)
+      for jj in tf.range(1,n):
+        tf.autograph.experimental.set_loop_options(
+          shape_invariants=[(mask_row, tf.TensorShape([None]))]
+        )
+        if jj >= ii:
+          mask_row = tf.concat([mask_row, [1]], axis=0)
+        else:
+          mask_row = tf.concat([mask_row, [0]], axis=0)
+      mask = tf.concat([mask, mask_row[tf.newaxis,:]], axis=0)
+    sv = tf.sqrt(tf.matmul(mask, v2[:,tf.newaxis])/d)[:,0]
+    idxvec = tf.cast(tf.where(sv < eps), tf.int32)
+    if tf.shape(idxvec)[0] == 0:
+        idx = n
     else:
         idx = idxvec[0,0]-1
 
-    if idx <= 0:
-        raise Exception('Found zero truncation index')
+    #if idx <= 0:
+    #    raise Exception('Found zero truncation index')
 
     return idx
 
@@ -31,18 +45,32 @@ def trace(ten, indices=None):
             ten = tf.linalg.trace(ten)
         return ten.numpy()
 
-    perm = []
+    perm = tf.constant([-1])
     for ii in range(tf.rank(ten)):
-        if ii in indices[0] or ii in indices[1]:
+        tf.autograph.experimental.set_loop_options(
+            shape_invariants=[(perm, tf.TensorShape([None]))]
+        )
+        iiten = tf.identity(ii)[tf.newaxis]
+        if tf.shape(tf.where(iiten == indices[0]))[0] > 0 or tf.shape(tf.where(iiten == indices[1]))[0] > 0:
             continue
-        perm.append(ii)
+        newidx = iiten
+        if tf.shape(tf.where(perm < 0))[0] > 0:
+          perm = newidx
+        else:
+          perm = tf.concat([perm,newidx], axis=0)
 
     for idx1, idx2 in zip(indices[0], indices[1]):
-        if ten.shape[idx1] != ten.shape[idx2]:
-            raise Exception(f'trace: Indices {idx1} and {idx2} have different dimensions')
-        
-        perm.append(idx1)
-        perm.append(idx2)
+        tf.autograph.experimental.set_loop_options(
+            shape_invariants=[(perm, tf.TensorShape([None]))]
+        )
+        #if ten.shape[idx1] != ten.shape[idx2]:
+        #    raise Exception(f'trace: Indices {idx1} and {idx2} have different dimensions')
+        newidx = tf.identity(idx1)[tf.newaxis]
+        if tf.shape(tf.where(perm < 0))[0] > 0:
+          perm = newidx
+        else:
+          perm = tf.concat([perm, newidx], axis=0)
+        perm = tf.concat([perm,tf.identity(idx2)[tf.newaxis]], axis=0)
 
     ten = tf.transpose(ten, perm=perm)
 
@@ -60,7 +88,7 @@ def tensor_equal(a,b,tol=0.0):
 def svd_trunc(a,tol=0.0,maxrank=None):
     s, u, v = tf.linalg.svd(a)
 
-    endidx = get_trunc_idx(s.numpy(), tol)
+    endidx = get_trunc_idx(s, tol)
     
     if maxrank is not None and maxrank > 0:
         endidx = min([endidx,maxrank])
