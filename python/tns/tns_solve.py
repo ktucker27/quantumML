@@ -433,15 +433,11 @@ def tdvp(mpo, mps, dt, tfinal, eps=0.0, debug=False, ef=None, exp_ops=[], anc_mp
             TR = R[ii]
             if ii < n-1:
                 TR = tf.squeeze(TR, axis=[3,4,5])
-                #while TR.shape[-1] == 1 and tf.rank(TR) > 3:
-                #    TR = tf.squeeze(TR, axis=-1)
             
             # Get the L tensor
             TL = L[ii]
             if ii > 0:
                 TL = tf.squeeze(TL, axis=[3,4,5])
-                #while TL.shape[-1] == 1 and tf.rank(TL) > 3:
-                #    TL = tf.squeeze(TL, axis=-1)
             
             # Evolve according to H
             v = ms.tensors[ii]

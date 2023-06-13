@@ -416,7 +416,7 @@ class TestTDVP(unittest.TestCase):
         rpow = 0
         npow = 3
         dt = 0.01
-        tfinal = 0.1
+        tfinal = 1
 
         # Build the MPO
         _, _, sz, sx, _ = operations.local_ops(pdim)
@@ -822,5 +822,3 @@ class TestTDVP2(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
-    #t = TestTDVP()
-    #t.test_oat()
