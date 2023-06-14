@@ -23,7 +23,8 @@ class TDVPFlexRNNCell(tf.keras.layers.Layer):
   '''
 
   def __init__(self, rnn_cell_real, rnn_cell_imag, mps0, mpo, maxt, deltat, params, input_param=0, exp_ops=[], **kwargs):
-    self.mps = mps0
+    self.mps0 = mps0
+    self.mps = mps0.substate(range(mps0.num_sites()))
     self.mpo = mpo
     self.maxt = maxt
     self.deltat = deltat
@@ -37,8 +38,9 @@ class TDVPFlexRNNCell(tf.keras.layers.Layer):
     self.anc_mpo_mps = [networks.apply_mpo(mpo, mps0)]
     [self.anc_mpo_mps.append(networks.apply_mpo(exp_op, mps0)) for exp_op in exp_ops]
 
-    self.state_size = [tf.size(x).numpy() for x in self.mps.tensors]
+    self.state_size = [tf.size(x) for x in self.mps.tensors]
     self.output_size = len(exp_ops)
+    self.exp_out = tf.Variable(tf.zeros(self.output_size, dtype=tf.float32), trainable=False)
 
     self.rnn_cell_real = rnn_cell_real
     self.rnn_cell_imag = rnn_cell_imag
@@ -53,16 +55,16 @@ class TDVPFlexRNNCell(tf.keras.layers.Layer):
     return exp_out
 
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
-    return self.mps.tensors
-    #return tf.zeros([batch_size, self.mps.size()], dtype=tf.float32)
+    return list(self.mps0.tensors)
 
   def call(self, inputs, states):
-    #mps = networks.MPS(states)
     for idx, ten in enumerate(states):
       self.mps.set_tensor(idx, ten, val=False)
 
     # Advance the state one time step
     _, _, exp_out = tns_solve.tdvp(self.mpo, self.mps, self.deltat, self.maxt, 0, False, None, self.exp_ops, self.anc_mps, self.anc_mpo_mps, self.mps_out)
-    #self.mps = mps_out[-1]
+    self.mps.assign(self.mps_out[-1])
 
-    return exp_out[:,-1], self.mps_out[-1].tensors
+    self.exp_out.assign(tf.cast(tf.math.real(exp_out[:,-1]), self.exp_out.dtype))
+
+    return self.exp_out, self.mps.tensors
