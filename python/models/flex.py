@@ -37,6 +37,10 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     self.b_rnn_cell_imag = b_rnn_cell_imag
     a = sde_systems.RabiWeakMeasSDE.a
     b = sde_systems.RabiWeakMeasSDE.b
+    self.zero_b = sde_systems.ZeroSDE.b
+    self.b_rnn_cell_real.trainable = False
+    self.b_rnn_cell_imag.trainable = False
+
     self.flex = sde_systems.FlexSDE(a, b, self.a_rnn_cell_real, self.a_rnn_cell_imag, self.b_rnn_cell_real, self.b_rnn_cell_imag)
 
     super(EulerFlexRNNCell, self).__init__(**kwargs)
@@ -53,7 +57,7 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
 
     tvec = np.arange(mint,maxt,deltat)
     wvec = tf.cast(tf.random.normal(stddev=math.sqrt(deltat), shape=[num_traj,tvec.shape[0]-1,m,1]), dtype=x0.dtype)
-    emod = sde_solve.EulerMultiDModel(mint, maxt, deltat, self.flex.a, self.flex.b, d, m, params.shape[1], params, [True, True, True, True], create_params=False)
+    emod = sde_solve.EulerMultiDModel(mint, maxt, deltat, self.flex.a, self.zero_b, d, m, params.shape[1], params, [True, True, True, True], create_params=False)
     xvec = emod(x0, num_traj, wvec, params)
     rhovec = sde_systems.unwrap_x_to_rho(tf.reshape(tf.transpose(xvec, perm=[0,2,1]), [-1,10]), self.pdim)
     #rhovec = tf.map_fn(lambda x: sde_systems.project_to_rho(x, self.pdim), rhovec/tf.linalg.trace(rhovec)[:,tf.newaxis,tf.newaxis])
@@ -149,7 +153,7 @@ def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes,
   for size in encoder_sizes:
     model.add(tf.keras.layers.Dense(size, activation='relu'))
 
-  model.add(tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: fusion.max_activation_mean0(x, max_val=12)))
+  model.add(tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: fusion.max_activation_mean0(x, max_val=12, xscale=100.0)))
 
   model.add(tf.keras.layers.RepeatVector(seq_len, input_shape=[1]))
 
@@ -171,7 +175,7 @@ def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes,
   xdim = 10
   model.layers[-1].cell.flex.a_cell_real.trainable_weights[-1].assign(tf.zeros(4*xdim))
   model.layers[-1].cell.flex.a_cell_imag.trainable_weights[-1].assign(tf.zeros(4*xdim))
-  model.layers[-1].cell.flex.b_cell_real.trainable_weights[-1].assign(tf.zeros(4*xdim))
-  model.layers[-1].cell.flex.b_cell_imag.trainable_weights[-1].assign(tf.zeros(4*xdim))
+  #model.layers[-1].cell.flex.b_cell_real.trainable_weights[-1].assign(tf.zeros(4*xdim))
+  #model.layers[-1].cell.flex.b_cell_imag.trainable_weights[-1].assign(tf.zeros(4*xdim))
 
   return model
