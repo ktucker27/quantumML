@@ -718,6 +718,9 @@ class RabiWeakMeasTrajSDE:
 
     def mib(self,t,x,p):
         return tf.ones(tf.shape(x), dtype=x.dtype)
+    
+    def mib_zeros(self,t,x,p):
+        return tf.zeros(tf.shape(x), dtype=x.dtype)
 
     def mibp(self,t,x,p):
         return tf.zeros(tf.shape(x), dtype=x.dtype)

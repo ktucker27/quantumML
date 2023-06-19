@@ -160,7 +160,7 @@ def get_probs(rhovec):
 
   return tf.stack([px, 1-px, py, 1-py, pz, 1-pz], axis=2)
 
-def run_model_2d(rho0, params, num_traj, mint=0.0, maxt=1.0, deltat=2**(-8), comp_i=True):
+def run_model_2d(rho0, params, num_traj, mint=0.0, maxt=1.0, deltat=2**(-8), comp_i=True, sim_noise=True):
   #rho0 = tf.reshape(tf.ones([num_traj,1,1], dtype=tf.complex128)*tf.constant([[1.0,0],[0,0]], dtype=tf.complex128), [num_traj,4,1])
   #rho0 = tf.reshape(tf.ones([num_traj,1,1], dtype=tf.complex128)*tf.constant([[0.5,0.5],[0.5,0.5]], dtype=tf.complex128), [num_traj,4,1])
   #x0 = tf.reshape(tf.ones([num_traj,1,1], dtype=tf.complex128)*tf.constant([1.0,0,0,0,0,0,0,0,0,0], dtype=tf.complex128), [num_traj,10,1])
@@ -171,7 +171,10 @@ def run_model_2d(rho0, params, num_traj, mint=0.0, maxt=1.0, deltat=2**(-8), com
   p = 10
 
   a = sde_systems.RabiWeakMeasSDE.a
-  b = sde_systems.RabiWeakMeasSDE.b
+  if sim_noise:
+    b = sde_systems.RabiWeakMeasSDE.b
+  else:
+    b = sde_systems.ZeroSDE.b
   bp = sde_systems.RabiWeakMeasSDE.bp
 
   tvec = np.arange(mint,maxt,deltat)
@@ -189,13 +192,19 @@ def run_model_2d(rho0, params, num_traj, mint=0.0, maxt=1.0, deltat=2**(-8), com
   if comp_i:
     traj_sdes1 = sde_systems.RabiWeakMeasTrajSDE(rhovec, deltat, 0)
     ai = traj_sdes1.mia
-    bi = traj_sdes1.mib
+    if sim_noise:
+      bi = traj_sdes1.mib
+    else:
+      bi = traj_sdes1.mib_zeros
     emod_i = sde_solve.EulerMultiDModel(mint, maxt, deltat, ai, bi, 1, 1, len(params), params, [True, True, True, True])
     ivec1 = emod_i(tf.zeros(1, dtype=tf.complex128), num_traj, wvec[:,:,0,:][:,:,tf.newaxis,:])
 
     traj_sdes2 = sde_systems.RabiWeakMeasTrajSDE(rhovec, deltat, 1)
     ai = traj_sdes2.mia
-    bi = traj_sdes2.mib
+    if sim_noise:
+      bi = traj_sdes2.mib
+    else:
+      bi = traj_sdes2.mib_zeros
     emod_i = sde_solve.EulerMultiDModel(mint, maxt, deltat, ai, bi, 1, 1, len(params), params, [True, True, True, True])
     ivec2 = emod_i(tf.zeros(1, dtype=tf.complex128), num_traj, wvec[:,:,1,:][:,:,tf.newaxis,:])
 
