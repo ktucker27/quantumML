@@ -160,7 +160,7 @@ def get_probs(rhovec):
 
   return tf.stack([px, 1-px, py, 1-py, pz, 1-pz], axis=2)
 
-def run_model_2d(rho0, params, num_traj, mint=0.0, maxt=1.0, deltat=2**(-8), comp_i=True, sim_noise=True):
+def run_model_2d(rho0, params, num_traj, mint=0.0, maxt=1.0, deltat=2**(-8), comp_i=True, sim_noise=True, start_meas=0):
   #rho0 = tf.reshape(tf.ones([num_traj,1,1], dtype=tf.complex128)*tf.constant([[1.0,0],[0,0]], dtype=tf.complex128), [num_traj,4,1])
   #rho0 = tf.reshape(tf.ones([num_traj,1,1], dtype=tf.complex128)*tf.constant([[0.5,0.5],[0.5,0.5]], dtype=tf.complex128), [num_traj,4,1])
   #x0 = tf.reshape(tf.ones([num_traj,1,1], dtype=tf.complex128)*tf.constant([1.0,0,0,0,0,0,0,0,0,0], dtype=tf.complex128), [num_traj,10,1])
@@ -170,12 +170,12 @@ def run_model_2d(rho0, params, num_traj, mint=0.0, maxt=1.0, deltat=2**(-8), com
   m = 2
   p = 10
 
-  a = sde_systems.RabiWeakMeasSDE.a
+  a = lambda t,x,p: sde_systems.RabiWeakMeasSDE.a(t,x,p,start_meas)
   if sim_noise:
-    b = sde_systems.RabiWeakMeasSDE.b
+    b = lambda t,x,p: sde_systems.RabiWeakMeasSDE.b(t,x,p,start_meas)
   else:
     b = sde_systems.ZeroSDE.b
-  bp = sde_systems.RabiWeakMeasSDE.bp
+  bp = lambda t,x,p: sde_systems.RabiWeakMeasSDE.bp(t,x,p,start_meas)
 
   tvec = np.arange(mint,maxt,deltat)
   wvec = tf.cast(tf.random.normal(stddev=math.sqrt(deltat), shape=[num_traj,tvec.shape[0]-1,m,1]), dtype=x0.dtype)
@@ -190,7 +190,7 @@ def run_model_2d(rho0, params, num_traj, mint=0.0, maxt=1.0, deltat=2**(-8), com
 
   # Simulate the voltage record
   if comp_i:
-    traj_sdes1 = sde_systems.RabiWeakMeasTrajSDE(rhovec, deltat, 0)
+    traj_sdes1 = sde_systems.RabiWeakMeasTrajSDE(rhovec, deltat, 0, start_meas)
     ai = traj_sdes1.mia
     if sim_noise:
       bi = traj_sdes1.mib
@@ -199,7 +199,7 @@ def run_model_2d(rho0, params, num_traj, mint=0.0, maxt=1.0, deltat=2**(-8), com
     emod_i = sde_solve.EulerMultiDModel(mint, maxt, deltat, ai, bi, 1, 1, len(params), params, [True, True, True, True])
     ivec1 = emod_i(tf.zeros(1, dtype=tf.complex128), num_traj, wvec[:,:,0,:][:,:,tf.newaxis,:])
 
-    traj_sdes2 = sde_systems.RabiWeakMeasTrajSDE(rhovec, deltat, 1)
+    traj_sdes2 = sde_systems.RabiWeakMeasTrajSDE(rhovec, deltat, 1, start_meas)
     ai = traj_sdes2.mia
     if sim_noise:
       bi = traj_sdes2.mib

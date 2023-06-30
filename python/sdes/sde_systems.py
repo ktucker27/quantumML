@@ -516,7 +516,7 @@ class RabiWeakMeasSDE:
     where k can be between 0 and n-1 and eps_j indicates crosstalk between qubits j and j+1
     '''
 
-    def a(t,x,p):
+    def a(t,x,p_in,start_meas=0):
         '''
         x - shape = [num_traj,d=pdim(pdim+1)/2,1] Upper triangle of rho where pdim = 2^n
         return shape = [num_traj,d,1]
@@ -524,6 +524,10 @@ class RabiWeakMeasSDE:
         #pdim = tf.cast(-0.5 + tf.math.sqrt(0.25 + 2.0*tf.cast(tf.shape(x)[1], dtype=tf.float32)), dtype=tf.int32)
         #pdim = int(-0.5 + np.sqrt(0.25 + 2.0*tf.cast(tf.shape(x)[1], dtype=tf.float32)))
         #n = np.log2(pdim).astype(int)
+        p = p_in
+        if t < start_meas:
+            p = p*tf.repeat(tf.constant([1,0,0,1], dtype=p.dtype), tf.shape(p)[0])
+        
         pdim = 4
         n = 2
         n_choose_2 = 1
@@ -576,7 +580,7 @@ class RabiWeakMeasSDE:
 
         return x_out
 
-    def b(t,x,p):
+    def b(t,x,p_in,start_meas=0):
         '''
         x - shape = [num_traj,d=pdim(pdim+1)/2,1] Upper triangle of rho where pdim = 2^n
         return shape = [num_traj,d,m]
@@ -584,6 +588,10 @@ class RabiWeakMeasSDE:
         #pdim = tf.cast(-0.5 + tf.math.sqrt(0.25 + 2.0*tf.cast(tf.shape(x)[1], dtype=tf.float32)), dtype=tf.int32)
         #pdim = int(-0.5 + np.sqrt(0.25 + 2.0*tf.cast(tf.shape(x)[1], dtype=tf.float32)))
         #n = np.log2(pdim).astype(int)
+        p = p_in
+        if t < start_meas:
+            p = p*tf.repeat(tf.constant([1,0,0,1], dtype=p.dtype), tf.shape(p)[0])
+        
         pdim = 4
         n = 2
 
@@ -614,8 +622,12 @@ class RabiWeakMeasSDE:
 
         return x_out
 
-    def bp(t,x,p):
+    def bp(t,x,p_in,start_meas=0):
         # return shape = [num_traj,m,d,d]
+        p = p_in
+        if t < start_meas:
+            p = p*tf.repeat(tf.constant([1,0,0,1], dtype=p.dtype), tf.shape(p)[0])
+        
         pdim = int(-0.5 + np.sqrt(0.25 + 2.0*tf.cast(tf.shape(x)[1], dtype=tf.float32)))
         n = np.log2(pdim).astype(int)
 
@@ -683,31 +695,41 @@ class RabiWeakMeasSDE:
         return liouv
 
 class RabiWeakMeasTrajSDE:
-    def __init__(self, rhovec, deltat, qidx):
+    def __init__(self, rhovec, deltat, qidx, start_meas=0):
         '''
         Equations for multi-qubit system voltage records
 
         rhovec - shape = [num_traj, num_times, pdim, pdim] vectorized density operators
         deltat - time spacing between each time index
         qidx - zero based qubit index
+        start_meas - time at which to turn on weak measurement
         '''
         self.pdim = tf.shape(rhovec)[2]
         self.n = int(np.math.log2(self.pdim))
         self.rhovec = rhovec
         self.deltat = deltat
         self.qidx = qidx
+        self.start_meas = start_meas
 
     def get_rho(self, t):
         tidx = np.rint(t/self.deltat).astype(int)
         return self.rhovec[:,tidx,:,:]
     
-    def mia0(self,t,x,p):
+    def mia0(self,t,x,p_in):
+        p = p_in
+        if t < self.start_meas:
+            p = p*tf.repeat(tf.constant([1,0,0,1], dtype=p.dtype), tf.shape(p)[0])
+        
         rho = self.get_rho(t)
         _, _, sz = paulis()
         l = tf.cast(tf.pow(0.5*p[1],0.5)*np.array(sz), dtype=rho.dtype)
         return tf.cast(tf.pow(0.5*p[2],0.5), dtype=rho.dtype)*tf.reshape(tf.linalg.trace(tf.matmul(rho,2.0*l)), [-1,1,1])
 
-    def mia(self,t,x,p):
+    def mia(self,t,x,p_in):
+        p = p_in
+        if t < self.start_meas:
+            p = p*tf.repeat(tf.constant([1,0,0,1], dtype=p.dtype), tf.shape(p)[0])
+        
         rho = self.get_rho(t)
         if tf.rank(p) == 1:
             p = p[tf.newaxis,:]
@@ -717,6 +739,8 @@ class RabiWeakMeasTrajSDE:
         return tf.cast(tf.pow(0.5*p[:,2,tf.newaxis,tf.newaxis],0.5), dtype=rho.dtype)*tf.reshape(tf.linalg.trace(tf.matmul(rho,2.0*l)), [-1,1,1])
 
     def mib(self,t,x,p):
+        if t < self.start_meas:
+            return tf.zeros(tf.shape(x), dtype=x.dtype)
         return tf.ones(tf.shape(x), dtype=x.dtype)
     
     def mib_zeros(self,t,x,p):
