@@ -314,3 +314,120 @@ class VQVAE(snt.Module):
         meas_int = tf.cast(tf.math.greater_equal(output, eps), tf.int32)
 
         return meas_int
+
+class Sampling(tf.keras.layers.Layer):
+  def call(self, inputs):
+    z_mean, z_log_var = inputs
+    eps = tf.random.normal(tf.shape(z_mean), mean=0.0, stddev=1.0, dtype=z_mean.dtype)
+    return z_mean + eps*tf.exp(0.5*z_log_var)
+
+def build_encoder(input_dim, hidden_dims, latent_dim):
+  '''Creates a VAE encoder using the Keras functional API
+
+  Args:
+    input_dim (int): Dimension of the input data
+    hidden_dims (list): List of hidden dimensions
+    latent_dim (int): Dimension of the latent space
+
+  Returns:
+    encoder (keras.Model): Encoder model
+  '''
+  input_layer = tf.keras.layers.Input(shape=(input_dim,))
+  x = input_layer
+
+  for hidden_dim in hidden_dims:
+    x = tf.keras.layers.Dense(hidden_dim, activation='relu')(x)
+
+  z_mean = tf.keras.layers.Dense(latent_dim)(x)
+  z_log_var = tf.keras.layers.Dense(latent_dim)(x)
+  z = Sampling()([z_mean, z_log_var])
+
+  encoder = tf.keras.Model(input_layer, [z_mean, z_log_var, z], name='encoder')
+  return encoder
+
+def build_decoder(latent_dim, hidden_dims, visible_dim, apply_sigmoid=False):
+  '''Creates a VAE decoder using the Keras functional API
+
+  Args:
+    latent_dim (int): Dimension of the latent space
+    hidden_dims (list): List of hidden dimensions
+    visible_dim (int): Dimension of the output space
+
+  Returns:
+    decoder (keras.Model): Decoder model
+  '''
+
+  z_in = tf.keras.layers.Input(shape=(latent_dim,))
+  x = z_in
+
+  for hidden_dim in hidden_dims:
+    x = tf.keras.layers.Dense(hidden_dim, activation='relu')(x)
+
+  if apply_sigmoid:
+    output = tf.keras.layers.Dense(visible_dim, activation='sigmoid')(x)
+  else:
+    output = tf.keras.layers.Dense(visible_dim)(x)
+
+  decoder = tf.keras.Model(z_in, output, name='decoder')
+
+  return decoder
+
+class KVAE(tf.keras.Model):
+  def __init__(self, encoder, decoder, **kwargs):
+    '''Creates a VAE model using the Keras functional API
+    Based in part on the Keras VAE example found at:
+    https://keras.io/examples/generative/vae/
+
+    Args:
+      encoder (keras.Model): Encoder model
+      decoder (keras.Model): Decoder model
+    '''
+    super(KVAE, self).__init__(**kwargs)
+
+    self.encoder = encoder
+    self.decoder = decoder
+
+    # Initialize loss trackers
+    self.total_loss_tracker = tf.keras.metrics.Mean(name='total_loss')
+    self.recon_loss_tracker = tf.keras.metrics.Mean(name='recon_loss')
+    self.kl_loss_tracker = tf.keras.metrics.Mean(name='kl_loss')
+
+  @property
+  def metrics(self):
+    return [self.total_loss_tracker, self.recon_loss_tracker, self.kl_loss_tracker]
+
+  def train_step(self, data):
+    with tf.GradientTape() as tape:
+      # Run the data through the VAE
+      z_mean, z_log_var, z = self.encoder(data)
+      recon = self.decoder(z)
+
+      # Compute the reconstruction loss
+      cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(labels=data, logits=recon)
+      log_pxz = -tf.reduce_sum(cross_ent, axis=1)
+      recon_loss = -tf.reduce_mean(log_pxz)
+
+      # Compute the KL loss
+      log_pz = log_normal_pdf(z, 0.0, 0.0)
+      log_qzx = log_normal_pdf(z, z_mean, z_log_var)
+      kl_loss = tf.reduce_mean(log_qzx - log_pz)
+
+      # Compute total loss
+      total_loss = recon_loss + kl_loss
+
+    grads = tape.gradient(total_loss, self.trainable_weights)
+    self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
+    self.total_loss_tracker.update_state(total_loss)
+    self.recon_loss_tracker.update_state(recon_loss)
+    self.kl_loss_tracker.update_state(kl_loss)
+
+    return {'loss': self.total_loss_tracker.result(),
+            'recon_loss': self.recon_loss_tracker.result(),
+            'kl_loss': self.kl_loss_tracker.result()}
+
+  def __call__(self, x):
+      # Run the encoder and decoder
+      z_mean, z_log_var, z = self.encoder(x)
+      x_recon = self.decoder(z)
+
+      return x_recon
