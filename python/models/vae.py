@@ -441,7 +441,7 @@ def build_sde_encoder(input_dim, avg_size, num_features, conv_sizes, hidden_dims
     input_dim    (int): Dimension of the input data
     avg_size     (int): Size of time window to average over
     num_features (int): Number of voltage elements (number of qubits*elements per qubit)
-    conv_sizes. (list): Sizes for convolutional layers
+    conv_sizes  (list): Sizes for convolutional layers
     hidden_dims (list): List of hidden dimensions
     latent_dim   (int): Dimension of the latent space
 
@@ -493,7 +493,7 @@ def build_sde_rnn_encoder(input_dim, avg_size, num_features, lstm_size, td_sizes
     avg_size     (int): Size of time window to average over
     num_features (int): Number of voltage elements (number of qubits*elements per qubit)
     lstm_size    (int): LSTM size for RNN layer
-    td_sizes.   (list): Time distributed layer sizes to apply to RNN output
+    td_sizes    (list): Time distributed layer sizes to apply to RNN output
     hidden_dims (list): List of hidden dimensions
     latent_dim   (int): Dimension of the latent space
 
@@ -542,9 +542,13 @@ def build_sde_rnn_decoder(latent_dim, hidden_dims, visible_dim, lstm_size, td_si
   '''Creates a VAE decoder using the Keras functional API
 
   Args:
-    latent_dim (int): Dimension of the latent space
-    hidden_dims (list): List of hidden dimensions
-    visible_dim (int): Dimension of the output space
+    latent_dim     (int): Dimension of the latent space
+    hidden_dims   (list): List of hidden dimensions
+    visible_dim    (int): Dimension of the output space
+    lstm_size      (int): LSTM size for RNN layer
+    td_sizes      (list): Time distributed layer sizes to apply to RNN output
+    num_features   (int): Number of voltage elements (number of qubits*elements per qubit)
+    apply_sigmoid (bool): If true, sigmoid activation will be applied to the output
 
   Returns:
     decoder (keras.Model): Decoder model
@@ -617,7 +621,7 @@ class SDEVAE(tf.keras.Model):
       encoder      (keras.Model): Encoder model
       decoder      (keras.Model): Decoder model
       phys_decoder (keras.Model): Physical SDE solver decoder
-      phys_dim.    (int)        : Dimension of latent space that is physical
+      phys_dim     (int)        : Dimension of latent space that is physical
     '''
     super(SDEVAE, self).__init__(**kwargs)
 
