@@ -566,7 +566,8 @@ def build_sde_rnn_decoder(latent_dim, hidden_dims, visible_dim, lstm_size, td_si
 
   x = rnn_layer(x[...,tf.newaxis])
   for td_size in td_sizes:
-    x = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(td_size, activation='relu'))(x)
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(td_size))(x)
+    #x = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(td_size, activation='relu'))(x)
 
   if apply_sigmoid:
     output = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(num_features, activation='sigmoid'))(x)
@@ -645,16 +646,19 @@ class SDEVAE(tf.keras.Model):
 
     # Predict the spin probabilities for this parameter set using the physical
     # decoder
-    prob_idx1 = 4 # Z_1 up probability index
+    prob_idx1 = 4 # Z_0 up probability index
+    prob_idx2 = 5 # Z_1 up probability index
     #probs = self.phys_decoder(z[:,-self.phys_dim:])
     probs = self.phys_decoder(z)
 
     # Compute the smoothing and reconstruction losses
     #smooth_loss = tf.cast(tf.reduce_mean(tf.keras.metrics.mean_squared_error(recon, tf.stop_gradient(probs[:,:,prob_idx1]))), tf.float32)
-    smooth_loss = tf.cast(tf.reduce_mean(tf.keras.metrics.mean_squared_error(recon, probs[:,:,prob_idx1])), tf.float32)
+    smooth_loss = tf.cast(tf.reduce_mean(tf.keras.metrics.mean_squared_error(recon[...,0], probs[:,:,prob_idx1]) + 
+                                         tf.keras.metrics.mean_squared_error(recon[...,1], probs[:,:,prob_idx2])), tf.float32)
     stride = 64
     recon_subsamp = tf.concat([recon[:,::stride,...], recon[:,-1,tf.newaxis,...]], axis=1)
-    recon_loss = tf.cast(tf.reduce_mean(tf.keras.metrics.mean_squared_error(recon_subsamp, y[:,:,prob_idx1])), tf.float32)
+    recon_loss = tf.cast(tf.reduce_mean(tf.keras.metrics.mean_squared_error(recon_subsamp[...,0], y[:,:,prob_idx1]) + 
+                                        tf.keras.metrics.mean_squared_error(recon_subsamp[...,1], y[:,:,prob_idx2])), tf.float32)
 
     #cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(labels=data, logits=recon)
     #log_pxz = -tf.reduce_sum(cross_ent, axis=1)
