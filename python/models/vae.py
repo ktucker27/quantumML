@@ -7,6 +7,8 @@ import tensorflow.compat.v2 as tf
 import tensorflow_datasets as tfds
 import tree
 import pandas as pd
+import flex
+import fusion
 
 try:
   import sonnet.v2 as snt
@@ -431,3 +433,270 @@ class KVAE(tf.keras.Model):
       x_recon = self.decoder(z)
 
       return x_recon
+
+def build_sde_encoder(input_dim, avg_size, num_features, conv_sizes, hidden_dims, latent_dim):
+  '''Creates a VAE encoder using the Keras functional API
+
+  Args:
+    input_dim    (int): Dimension of the input data
+    avg_size     (int): Size of time window to average over
+    num_features (int): Number of voltage elements (number of qubits*elements per qubit)
+    conv_sizes. (list): Sizes for convolutional layers
+    hidden_dims (list): List of hidden dimensions
+    latent_dim   (int): Dimension of the latent space
+
+  Returns:
+    encoder (keras.Model): Encoder model
+  '''
+  input_layer = tf.keras.layers.Input(shape=(input_dim, num_features))
+  x = input_layer
+
+  first = True
+
+  if avg_size is not None:
+    x = tf.keras.layers.AveragePooling2D((avg_size, 1), strides=1)(x[...,tf.newaxis])
+    first = False
+  else:
+    avg_size = 20
+
+  for conv_idx, conv_size in enumerate(conv_sizes):
+    if first:
+      x = tf.keras.layers.Conv2D(conv_size, (avg_size, num_features))(x[...,tf.newaxis])
+      first = False
+    else:
+      if conv_idx == 0:
+        x = tf.keras.layers.Conv2D(conv_size, (avg_size, num_features), strides=2)(x)
+      elif conv_idx == 1:
+        x = tf.keras.layers.Conv2D(conv_size, (avg_size,1))(x)
+      else:
+        x = tf.keras.layers.Conv2D(conv_size, (avg_size,1))(x)
+    x = tf.keras.layers.AveragePooling2D((avg_size,1), strides=1)(x)
+
+  x = tf.keras.layers.Flatten()(x)
+
+  for hidden_dim in hidden_dims:
+    x = tf.keras.layers.Dense(hidden_dim)(x)
+    #x = tf.keras.layers.Dense(hidden_dim, activation='tanh')(x)
+
+  z_mean = tf.keras.layers.Dense(latent_dim)(x)
+  z_log_var = tf.keras.layers.Dense(latent_dim)(x)
+  z = Sampling()([z_mean, z_log_var])
+
+  encoder = tf.keras.Model(input_layer, [z_mean, z_log_var, z], name='encoder')
+  return encoder
+
+def build_sde_rnn_encoder(input_dim, avg_size, num_features, lstm_size, td_sizes, hidden_dims, latent_dim):
+  '''Creates a VAE encoder using the Keras functional API
+
+  Args:
+    input_dim    (int): Dimension of the input data
+    avg_size     (int): Size of time window to average over
+    num_features (int): Number of voltage elements (number of qubits*elements per qubit)
+    lstm_size    (int): LSTM size for RNN layer
+    td_sizes.   (list): Time distributed layer sizes to apply to RNN output
+    hidden_dims (list): List of hidden dimensions
+    latent_dim   (int): Dimension of the latent space
+
+  Returns:
+    encoder (keras.Model): Encoder model
+  '''
+  input_layer = tf.keras.layers.Input(shape=(input_dim, num_features))
+  x = input_layer
+
+  first = True
+
+  if avg_size is not None:
+    x = tf.keras.layers.AveragePooling2D((avg_size, 1), strides=1)(x[...,tf.newaxis])
+    first = False
+  else:
+    avg_size = 20
+
+  x = tf.keras.layers.Reshape([input_dim - avg_size + 1, num_features])(x)
+
+  rnn_layer = tf.keras.layers.LSTM(lstm_size,
+                                   batch_input_shape=(input_dim, num_features),
+                                   dropout=0.0,
+                                   stateful=False,
+                                   return_sequences=True,
+                                   name='lstm_layer')
+
+  x = rnn_layer(x)
+
+  for td_size in td_sizes:
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(td_size, activation='relu'))(x)
+
+  x = tf.keras.layers.Flatten()(x)
+
+  for hidden_dim in hidden_dims:
+    x = tf.keras.layers.Dense(hidden_dim)(x)
+    #x = tf.keras.layers.Dense(hidden_dim, activation='relu')(x)
+
+  z_mean = tf.keras.layers.Dense(latent_dim)(x)
+  z_log_var = tf.keras.layers.Dense(latent_dim)(x)
+  z = Sampling()([z_mean, z_log_var])
+
+  encoder = tf.keras.Model(input_layer, [z_mean, z_log_var, z], name='encoder')
+  return encoder
+
+def build_sde_rnn_decoder(latent_dim, hidden_dims, visible_dim, lstm_size, td_sizes, num_features, apply_sigmoid=False):
+  '''Creates a VAE decoder using the Keras functional API
+
+  Args:
+    latent_dim (int): Dimension of the latent space
+    hidden_dims (list): List of hidden dimensions
+    visible_dim (int): Dimension of the output space
+
+  Returns:
+    decoder (keras.Model): Decoder model
+  '''
+
+  z_in = tf.keras.layers.Input(shape=(latent_dim,))
+  x = z_in
+
+  for hidden_dim in hidden_dims:
+    x = tf.keras.layers.Dense(hidden_dim, activation='relu')(x)
+  x = tf.keras.layers.Dense(visible_dim)(x)
+
+  rnn_layer = tf.keras.layers.LSTM(lstm_size,
+                                   batch_input_shape=(visible_dim, 1),
+                                   dropout=0.0,
+                                   stateful=False,
+                                   return_sequences=True,
+                                   name='lstm_layer')
+
+  x = rnn_layer(x[...,tf.newaxis])
+  for td_size in td_sizes:
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(td_size, activation='relu'))(x)
+
+  if apply_sigmoid:
+    output = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(num_features, activation='sigmoid'))(x)
+  else:
+    output = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(num_features, activation='sigmoid'))(x)
+
+  decoder = tf.keras.Model(z_in, output, name='decoder')
+
+  return decoder
+
+def build_physical_decoder(seq_len, latent_dim, hidden_dims, phys_dim, lstm_size, rho0, params, deltat):
+  model = tf.keras.Sequential()
+  model.add(tf.keras.layers.Input(shape=(latent_dim,)))
+  for hidden_dim in hidden_dims:
+    #model.add(tf.keras.layers.Dense(latent_dim, activation=lambda x: fusion.max_activation_mean0(x, max_val=12, xscale=100.0)))
+    model.add(tf.keras.layers.Dense(hidden_dim, activation='relu'))
+  model.add(tf.keras.layers.Dense(phys_dim))
+
+  model.add(tf.keras.layers.RepeatVector(seq_len))
+
+  # Add the physical layer
+  a_rnn_cell_real = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+  a_rnn_cell_imag = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+  b_rnn_cell_real = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+  b_rnn_cell_imag = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+
+  a_rnn_cell_real.trainable = False
+  a_rnn_cell_imag.trainable = False
+  b_rnn_cell_real.trainable = False
+  b_rnn_cell_imag.trainable = False
+
+  model.add(tf.keras.layers.RNN(flex.EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
+                                            maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
+                                            num_traj=1, input_param=3),
+                                stateful=False,
+                                return_sequences=True,
+                                name='physical_layer'))
+  return model
+
+class SDEVAE(tf.keras.Model):
+  def __init__(self, encoder, decoder, phys_decoder, phys_dim, **kwargs):
+    '''Creates a VAE model using the Keras functional API
+    Based in part on the Keras VAE example found at:
+    https://keras.io/examples/generative/vae/
+
+    Args:
+      encoder      (keras.Model): Encoder model
+      decoder      (keras.Model): Decoder model
+      phys_decoder (keras.Model): Physical SDE solver decoder
+      phys_dim.    (int)        : Dimension of latent space that is physical
+    '''
+    super(SDEVAE, self).__init__(**kwargs)
+
+    self.encoder = encoder
+    self.decoder = decoder
+    self.phys_decoder = phys_decoder
+    self.phys_dim = phys_dim
+
+    # Initialize loss trackers
+    self.total_loss_tracker = tf.keras.metrics.Mean(name='total_loss')
+    self.recon_loss_tracker = tf.keras.metrics.Mean(name='recon_loss')
+    self.smooth_loss_tracker = tf.keras.metrics.Mean(name='smooth_loss')
+    self.kl_loss_tracker = tf.keras.metrics.Mean(name='kl_loss')
+    self.strong_meas_loss_tracker = tf.keras.metrics.Mean(name='strong_meas_loss')
+
+  @property
+  def metrics(self):
+    return [self.total_loss_tracker, self.recon_loss_tracker, self.smooth_loss_tracker, self.kl_loss_tracker]
+
+  def comp_loss(self, data):
+    x, y = data
+
+    # Run the voltage data through the VAE
+    z_mean, z_log_var, z = self.encoder(x)
+    recon = self.decoder(z)
+
+    # Predict the spin probabilities for this parameter set using the physical
+    # decoder
+    prob_idx1 = 4 # Z_1 up probability index
+    #probs = self.phys_decoder(z[:,-self.phys_dim:])
+    probs = self.phys_decoder(z)
+
+    # Compute the smoothing and reconstruction losses
+    #smooth_loss = tf.cast(tf.reduce_mean(tf.keras.metrics.mean_squared_error(recon, tf.stop_gradient(probs[:,:,prob_idx1]))), tf.float32)
+    smooth_loss = tf.cast(tf.reduce_mean(tf.keras.metrics.mean_squared_error(recon, probs[:,:,prob_idx1])), tf.float32)
+    stride = 64
+    recon_subsamp = tf.concat([recon[:,::stride,...], recon[:,-1,tf.newaxis,...]], axis=1)
+    recon_loss = tf.cast(tf.reduce_mean(tf.keras.metrics.mean_squared_error(recon_subsamp, y[:,:,prob_idx1])), tf.float32)
+
+    #cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(labels=data, logits=recon)
+    #log_pxz = -tf.reduce_sum(cross_ent, axis=1)
+    #recon_loss = -tf.reduce_mean(log_pxz)
+
+    # Compute the KL loss
+    log_pz = log_normal_pdf(z, 0.0, 0.0)
+    log_qzx = log_normal_pdf(z, z_mean, z_log_var)
+    kl_loss = tf.reduce_mean(log_qzx - log_pz)
+
+    # Compute the strong measurement loss
+    #strong_meas_loss = fusion.fusion_mse_loss_2d(y, probs)
+    strong_meas_loss = fusion.fusion_mse_loss_subsamp(y, probs)
+
+    # Compute total loss
+    #total_loss = recon_loss + kl_loss + strong_meas_loss
+    total_loss = recon_loss + smooth_loss + strong_meas_loss
+
+    return total_loss, recon_loss, smooth_loss, kl_loss, strong_meas_loss
+
+  def train_step(self, data):
+    with tf.GradientTape() as tape:
+      total_loss, recon_loss, smooth_loss, kl_loss, strong_meas_loss = self.comp_loss(data)
+
+    grads = tape.gradient(total_loss, self.trainable_weights)
+    self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
+    self.total_loss_tracker.update_state(total_loss)
+    self.recon_loss_tracker.update_state(recon_loss)
+    self.smooth_loss_tracker.update_state(smooth_loss)
+    self.kl_loss_tracker.update_state(kl_loss)
+    self.strong_meas_loss_tracker.update_state(strong_meas_loss)
+
+    return {'loss': self.total_loss_tracker.result(),
+            'recon_loss': self.recon_loss_tracker.result(),
+            'smooth_loss': self.smooth_loss_tracker.result(),
+            #'kl_loss': self.kl_loss_tracker.result(),
+            'strong_meas_loss': self.strong_meas_loss_tracker.result()}
+
+  def __call__(self, x):
+      # Run the encoder and decoder
+      z_mean, z_log_var, z = self.encoder(x)
+      x_recon = self.decoder(z)
+      probs = self.phys_decoder(z)
+
+      return z_mean, z_log_var, z, x_recon, probs
