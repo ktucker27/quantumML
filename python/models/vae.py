@@ -576,7 +576,7 @@ def build_sde_rnn_decoder(latent_dim, hidden_dims, visible_dim, lstm_size, td_si
   if apply_sigmoid:
     output = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(num_features, activation='sigmoid'))(x)
   else:
-    output = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(num_features, activation='sigmoid'))(x)
+    output = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(num_features))(x)
 
   decoder = tf.keras.Model(z_in, output, name='decoder')
 
