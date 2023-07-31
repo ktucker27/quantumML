@@ -557,17 +557,21 @@ def build_sde_rnn_decoder(latent_dim, hidden_dims, visible_dim, lstm_size, td_si
   z_in = tf.keras.layers.Input(shape=(latent_dim,))
   x = z_in
 
+  #x = tf.keras.layers.RepeatVector(visible_dim)(x)
+
   for hidden_dim in hidden_dims:
     x = tf.keras.layers.Dense(hidden_dim, activation='relu')(x)
   x = tf.keras.layers.Dense(visible_dim)(x)
 
   rnn_layer = tf.keras.layers.LSTM(lstm_size,
+                                   #batch_input_shape=(visible_dim, latent_dim),
                                    batch_input_shape=(visible_dim, 1),
                                    dropout=0.0,
                                    stateful=False,
                                    return_sequences=True,
                                    name='lstm_layer')
 
+  #x = rnn_layer(x)
   x = rnn_layer(x[...,tf.newaxis])
   for td_size in td_sizes:
     x = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(td_size))(x)
@@ -586,9 +590,9 @@ def build_physical_decoder(seq_len, latent_dim, hidden_dims, phys_dim, lstm_size
   model = tf.keras.Sequential()
   model.add(tf.keras.layers.Input(shape=(latent_dim,)))
   for hidden_dim in hidden_dims:
-    #model.add(tf.keras.layers.Dense(latent_dim, activation=lambda x: fusion.max_activation_mean0(x, max_val=12, xscale=100.0)))
     model.add(tf.keras.layers.Dense(hidden_dim, activation='relu'))
   model.add(tf.keras.layers.Dense(phys_dim))
+  #model.add(tf.keras.layers.Dense(phys_dim, activation=lambda x: fusion.max_activation_mean0(x, max_val=12, xscale=100.0)))
 
   model.add(tf.keras.layers.RepeatVector(seq_len))
 
@@ -657,11 +661,11 @@ class SDEVAE(tf.keras.Model):
 
     # Compute the smoothing and reconstruction losses
     #smooth_loss = tf.cast(tf.reduce_mean(tf.keras.metrics.mean_squared_error(recon, tf.stop_gradient(probs[:,:,prob_idx1]))), tf.float32)
-    smooth_loss = tf.cast(tf.reduce_mean(tf.keras.metrics.mean_squared_error(recon[...,0], probs[:,:,prob_idx1]) + 
+    smooth_loss = tf.cast(tf.reduce_mean(tf.keras.metrics.mean_squared_error(recon[...,0], probs[:,:,prob_idx1]) +
                                          tf.keras.metrics.mean_squared_error(recon[...,1], probs[:,:,prob_idx2])), tf.float32)
     stride = 64
     recon_subsamp = tf.concat([recon[:,::stride,...], recon[:,-1,tf.newaxis,...]], axis=1)
-    recon_loss = tf.cast(tf.reduce_mean(tf.keras.metrics.mean_squared_error(recon_subsamp[...,0], y[:,:,prob_idx1]) + 
+    recon_loss = tf.cast(tf.reduce_mean(tf.keras.metrics.mean_squared_error(recon_subsamp[...,0], y[:,:,prob_idx1]) +
                                         tf.keras.metrics.mean_squared_error(recon_subsamp[...,1], y[:,:,prob_idx2])), tf.float32)
 
     #cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(labels=data, logits=recon)
