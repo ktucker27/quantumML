@@ -30,6 +30,10 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     self.start_meas = start_meas
     self.pdim = 4 # TODO - Remove hard-coded dimension
 
+    self.pre_meas_params = np.copy(params)
+    self.pre_meas_params[1] = 0 # kappa
+    self.pre_meas_params[2] = 0 # eta
+
     self.state_size = [self.rho0.shape, 1]
     self.output_size = 43
 
@@ -95,7 +99,7 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
 
     return rhovec, ivec
 
-def call(self, inputs, states):
+  def call(self, inputs, states):
     rho = states[0]
     t = states[1]
 
@@ -232,7 +236,7 @@ def build_flex_model(seq_len, lstm_size, rho0, params, deltat):
   
   return model
 
-def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, lstm_size, num_params, rho0, params, deltat, start_meas=0):
+def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, lstm_size, num_params, rho0, params, deltat, num_traj=1, start_meas=0):
   model = tf.keras.Sequential()
 
   first = True
@@ -273,7 +277,7 @@ def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes,
 
   model.add(tf.keras.layers.RNN(EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
                                                  maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
-                                                 num_traj=20, input_param=3, start_meas=start_meas),
+                                                 num_traj=num_traj, input_param=3, start_meas=start_meas),
                                 stateful=False,
                                 return_sequences=True,
                                 name='physical_layer'))
