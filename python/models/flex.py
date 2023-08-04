@@ -136,6 +136,7 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
 
     # If what we want is voltage records, then we're done
     if self.comp_iq:
+      ivec = tf.reduce_mean(tf.reshape(ivec, [self.num_traj,-1,tf.shape(ivec)[1],tf.shape(ivec)[2]]), axis=0)
       ivec = ivec[:,-1,:]
       return ivec, [rhovecs, t]
 
