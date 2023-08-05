@@ -29,12 +29,13 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     self.sim_noise = sim_noise
     self.start_meas = start_meas
     self.pdim = 4 # TODO - Remove hard-coded dimension
+    self.m = 2
 
     self.pre_meas_params = np.copy(params)
     self.pre_meas_params[1] = 0 # kappa
     self.pre_meas_params[2] = 0 # eta
 
-    self.state_size = [self.rho0.shape, 1]
+    self.state_size = [self.rho0.shape, self.m, 1]
     self.output_size = 43
 
     # Setup the flex SDE functions
@@ -54,9 +55,9 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
 
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
     self.flex.init_states(batch_size*self.num_traj)
-    return [tf.reshape(tf.ones([batch_size,1], dtype=tf.complex128)*tf.cast(tf.constant(self.rho0), dtype=tf.complex128), [batch_size,self.pdim,self.pdim]), 0.0]
+    return [tf.reshape(tf.ones([self.num_traj*batch_size,1], dtype=tf.complex128)*tf.cast(tf.constant(self.rho0), dtype=tf.complex128), [self.num_traj*batch_size,self.pdim,self.pdim]), tf.zeros([self.num_traj*batch_size,self.m], dtype=tf.complex128), 0.0]
 
-  def run_model(self, rho, params, num_traj, mint, maxt, deltat=2**(-8)):
+  def run_model(self, rho, ivec0, params, num_traj, mint, maxt, deltat=2**(-8)):
     x0 = sde_systems.wrap_rho_to_x(rho, self.pdim)
 
     d = 10
@@ -82,7 +83,7 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
       else:
         bi = traj_sdes1.mib_zeros
       emod_i = sde_solve.EulerMultiDModel(mint, maxt, deltat, ai, bi, 1, 1, params.shape[1], params, [True, True, True, True], create_params=False)
-      ivec1 = emod_i(tf.zeros(1, dtype=tf.complex128), num_traj, wvec[:,:,0,:][:,:,tf.newaxis,:])
+      ivec1 = emod_i(ivec0[:,0], num_traj, wvec[:,:,0,:][:,:,tf.newaxis,:])
 
       traj_sdes2 = sde_systems.RabiWeakMeasTrajSDE(rhovec, deltat, 1, self.start_meas)
       ai = traj_sdes2.mia
@@ -91,17 +92,18 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
       else:
         bi = traj_sdes2.mib_zeros
       emod_i = sde_solve.EulerMultiDModel(mint, maxt, deltat, ai, bi, 1, 1, params.shape[1], params, [True, True, True, True], create_params=False)
-      ivec2 = emod_i(tf.zeros(1, dtype=tf.complex128), num_traj, wvec[:,:,1,:][:,:,tf.newaxis,:])
+      ivec2 = emod_i(ivec0[:,1], num_traj, wvec[:,:,1,:][:,:,tf.newaxis,:])
 
       ivec = tf.transpose(tf.concat([ivec1, ivec2], axis=1), perm=[0,2,1])
     else:
-      ivec = None
+      ivec = ivec0[:,tf.newaxis,:]
 
     return rhovec, ivec
 
   def call(self, inputs, states):
     rho = states[0]
-    t = states[1]
+    ivec = states[1]
+    t = states[2]
 
     p_t = self.params
     if t < self.start_meas:
@@ -120,28 +122,35 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
 
     #traj_inputs = tf.squeeze(traj_inputs)
     traj_inputs = tf.tile(traj_inputs, multiples=[self.num_traj,1])
-    rho = tf.tile(rho, multiples=[self.num_traj,1,1])
+    #rho = tf.tile(rho, multiples=[self.num_traj,1,1])
+    #ivec = tf.tile(ivec, multiples=[self.num_traj,1])
 
     # Advance the state one time step
-    rhovecs, ivec = self.run_model(rho, traj_inputs, num_traj=tf.shape(traj_inputs)[0], mint=0, maxt=self.maxt, deltat=self.deltat)
-
-    # Average over trajectories
-    rhovecs = tf.reduce_mean(tf.reshape(rhovecs, [self.num_traj,-1,tf.shape(rhovecs)[1],tf.shape(rhovecs)[2],tf.shape(rhovecs)[3]]), axis=0)
-
-    # Project onto the space of physical states
+    rhovecs, ivec = self.run_model(rho, ivec, traj_inputs, num_traj=tf.shape(traj_inputs)[0], mint=0, maxt=self.maxt, deltat=self.deltat)
     rhovecs = rhovecs[:,-1,:,:]
-    rhovecs = tf.map_fn(lambda x: sde_systems.project_to_rho(x, self.pdim), rhovecs/tf.linalg.trace(rhovecs)[:,tf.newaxis,tf.newaxis])
+    ivec = ivec[:,-1,:]
 
     t = t + self.deltat
 
     # If what we want is voltage records, then we're done
     if self.comp_iq:
-      ivec = tf.reduce_mean(tf.reshape(ivec, [self.num_traj,-1,tf.shape(ivec)[1],tf.shape(ivec)[2]]), axis=0)
-      ivec = ivec[:,-1,:]
-      return ivec, [rhovecs, t]
+      ivec_traj = tf.reshape(tf.math.real(ivec), [self.num_traj,-1,tf.shape(ivec)[1]])
+      ivec_mean = tf.reduce_mean(ivec_traj, axis=0)
+      ivec_std = tf.math.reduce_std(ivec_traj, axis=0)
+      ivec_out = tf.concat([ivec_mean[...,tf.newaxis], ivec_std[...,tf.newaxis]], axis=-1)
+      return ivec_out, [rhovecs, ivec, t]
+
+    # Average over trajectories
+    rhovecs_avg = tf.reduce_mean(tf.reshape(rhovecs, [self.num_traj,-1,tf.shape(rhovecs)[1],tf.shape(rhovecs)[2]]), axis=0)
+
+    # Project onto the space of physical states
+    rhovecs_avg = tf.map_fn(lambda x: sde_systems.project_to_rho(x, self.pdim), rhovecs_avg/tf.linalg.trace(rhovecs_avg)[:,tf.newaxis,tf.newaxis])
+
+    if self.num_traj == 1:
+      rhovecs = rhovecs_avg
 
     # Calculate probabilities
-    probs = tf.math.real(sde_systems.get_2d_probs(rhovecs[:,tf.newaxis,:,:])[:,-1,:])
+    probs = tf.math.real(sde_systems.get_2d_probs(rhovecs_avg[:,tf.newaxis,:,:])[:,-1,:])
     #probs = tf.math.maximum(probs,0)
     #probs = tf.math.minimum(probs,1.0)
 
@@ -149,13 +158,13 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     #mask = tf.math.logical_not(tf.math.is_nan(tf.reduce_max(tf.math.real(probs), axis=[1])))
     #probs = tf.boolean_mask(probs, mask)
 
-    return tf.concat((probs, tf.cast(inputs, dtype=tf.float64)), axis=1), [rhovecs, t]
+    return tf.concat((probs, tf.cast(inputs, dtype=tf.float64)), axis=1), [rhovecs, ivec, t]
 
 class SDERNNCell(tf.keras.layers.Layer):
   ''' An RNN cell for taking a single Euler step with neural network drift and diffusion functions
   '''
 
-  def __init__(self, a_model_real, a_model_imag, b_model_real, b_model_imag, output_dim, x0, maxt, deltat, params, num_traj=1, **kwargs):
+  def __init__(self, a_model_real, a_model_imag, b_model_real, b_model_imag, output_dim, x0, maxt, deltat, d, m, params, num_traj=1, **kwargs):
     self.x0 = x0
     self.maxt = maxt
     self.deltat = deltat
@@ -172,21 +181,22 @@ class SDERNNCell(tf.keras.layers.Layer):
     self.b_model_imag = b_model_imag
 
     # Setup the NN SDE functions
-    self.nn_sde = sde_systems.NNSDE(self.a_model_real, self.a_model_imag, self.b_model_real, self.b_model_imag)
+    self.nn_sde = sde_systems.NNSDE(self.a_model_real, self.a_model_imag, self.b_model_real, self.b_model_imag, d, m)
 
     super(SDERNNCell, self).__init__(**kwargs)
 
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
-    return tf.reshape(tf.ones([batch_size,1], dtype=tf.complex128)*tf.cast(tf.constant(self.x0)[tf.newaxis,:], dtype=tf.complex128), [batch_size,-1])
+    return tf.reshape(tf.ones([self.num_traj*batch_size,1], dtype=tf.complex128)*tf.cast(tf.constant(self.x0)[tf.newaxis,:], dtype=tf.complex128), [batch_size,-1])
 
   def run_model(self, x0, params, num_traj, mint, maxt, deltat=2**(-8)):
     d = self.state_size
-    m = 1
+    m = 2
 
     tvec = np.arange(mint,maxt,deltat)
-    wvec = tf.cast(tf.random.normal(stddev=math.sqrt(deltat), shape=[num_traj,tvec.shape[0]-1,m,1]), dtype=x0.dtype)
-    emod = sde_solve.EulerMultiDModel(mint, maxt, deltat, self.nn_sde.a, self.nn_sde.b, d, m, params.shape[1], params, None, create_params=False)
-    xvec = emod(x0, num_traj, wvec, params)
+    #wvec = tf.cast(tf.random.normal(stddev=math.sqrt(deltat), shape=[num_traj,tvec.shape[0]-1,m,1]), dtype=x0.dtype)
+    wvec = tf.cast(params[:,tf.newaxis,:m,tf.newaxis], dtype=x0.dtype)
+    emod = sde_solve.EulerMultiDModel(mint, maxt, deltat, self.nn_sde.a, self.nn_sde.b, d, m, params.shape[1]-m, params[:,m:], None, create_params=False)
+    xvec = emod(x0, num_traj, wvec, params[:,m:])
 
     return xvec
 
@@ -205,11 +215,12 @@ class SDERNNCell(tf.keras.layers.Layer):
         else:
           traj_inputs = tf.concat((traj_inputs, param_inputs), axis=1)
     else:
-      traj_inputs = tf.tile(self.params[tf.newaxis,:], multiples=[tf.shape(x)[0],1])
+      traj_inputs = tf.tile(self.params[tf.newaxis,:], multiples=[tf.shape(inputs)[0],1])
+    
+    traj_inputs = tf.concat([tf.cast(inputs, traj_inputs.dtype), traj_inputs], axis=1)
 
     # Tile the input based on the number of desired trajectories
     traj_inputs = tf.tile(traj_inputs, multiples=[self.num_traj,1])
-    x = tf.tile(x, multiples=[self.num_traj,1])
 
     # Advance the state one time step
     y = self.run_model(x, traj_inputs, num_traj=tf.shape(traj_inputs)[0], mint=0, maxt=self.maxt, deltat=self.deltat)

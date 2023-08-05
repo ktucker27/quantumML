@@ -494,17 +494,20 @@ class FlexSDE:
         return self.bf(t,x,p) + tf.complex(tf.cast(cell_out_real, tf.float64), tf.cast(cell_out_imag, tf.float64))[:,:,tf.newaxis]
 
 class NNSDE:
-    def __init__(self, a_model_real, a_model_imag, b_model_real, b_model_imag):
+    def __init__(self, a_model_real, a_model_imag, b_model_real, b_model_imag, d, m):
         self.a_model_real = a_model_real
         self.a_model_imag = a_model_imag
         self.b_model_real = b_model_real
         self.b_model_imag = b_model_imag
+        self.d = d
+        self.m = m
     
     def a(self,t,x,p):
         '''
         t - scalar time
         x - shape = [batch_size, num_x]
         p - shape = [batch_size, num_params]
+        return shape - [batch_size, d, 1]
         '''
         xten_real = tf.cast(tf.math.real(x[:,:,0]), tf.float32)
         xten_imag = tf.cast(tf.math.imag(x[:,:,0]), tf.float32)
@@ -519,14 +522,17 @@ class NNSDE:
         t - scalar time
         x - shape = [batch_size, num_x]
         p - shape = [batch_size, num_params]
+        return shape - [batch_size, d, m]
         '''
         xten_real = tf.cast(tf.math.real(x[:,:,0]), tf.float32)
         xten_imag = tf.cast(tf.math.imag(x[:,:,0]), tf.float32)
         tten = t*tf.ones([tf.shape(x)[0],1], xten_real.dtype)
         real_part = self.b_model_real(tf.concat([tten,xten_real,tf.cast(p, xten_real.dtype)], axis=1))
         imag_part = self.b_model_imag(tf.concat([tten,xten_imag,tf.cast(p, xten_real.dtype)], axis=1))
+        real_part = tf.reshape(real_part, [-1, self.d, self.m])
+        imag_part = tf.reshape(imag_part, [-1, self.d, self.m])
 
-        return tf.complex(tf.cast(real_part, tf.float64), tf.cast(imag_part, tf.float64))[:,:,tf.newaxis]
+        return tf.complex(tf.cast(real_part, tf.float64), tf.cast(imag_part, tf.float64))
 
 class RabiWeakMeasSDE:
     '''
