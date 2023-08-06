@@ -105,7 +105,7 @@ def fit_model(x0, y, sde_mod, loss_func, batch_size, epochs=10, learning_rate=0.
 
 class EulerMultiDModel(tf.Module):
 
-  def __init__(self, mint, maxt, deltat, a, b, d, m, num_params, params=None, fix_params=None, create_params=True):
+  def __init__(self, mint, maxt, deltat, a, b, d, m, num_params, params=None, fix_params=None, create_params=True, tten=None):
     self.num_params = num_params
     if create_params:
       self.params = []
@@ -128,6 +128,8 @@ class EulerMultiDModel(tf.Module):
 
     self.d = d
     self.m = m
+
+    self.tten = tten
   
   #@tf.function
   def __call__(self, x0, num_traj=None, wvec=None, params=None):
@@ -146,7 +148,12 @@ class EulerMultiDModel(tf.Module):
     y = tf.reshape(prevy, [num_traj,self.d,1])
 
     for tidx, t in enumerate(self.tvec[:-1]):
-      curry = prevy + self.a(t,prevy,self.params)*self.deltat + tf.matmul(self.b(t,prevy,self.params),self.wvec[:,tidx,:,:])
+      if self.tten is not None:
+        t_in = self.tten[tidx]
+      else:
+        t_in = t
+
+      curry = prevy + self.a(t_in,prevy,self.params)*self.deltat + tf.matmul(self.b(t_in,prevy,self.params),self.wvec[:,tidx,:,:])
       y = tf.concat([y, curry], axis=2)
       prevy = curry
 
