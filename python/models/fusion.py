@@ -160,21 +160,19 @@ def get_probs(rhovec):
 
   return tf.stack([px, 1-px, py, 1-py, pz, 1-pz], axis=2)
 
-def sample_traj(traj_probs, prob_idx):
+def sample_traj_spins(traj_probs):
   '''Samples from the given probability distributions assumed to be Bernoulli
     probabilities of spin-up
     Input:
     traj_probs - Tensor of spin up probabilities
-    prob_idx   - Measurement index, assumed to be in [0,5] (single qubit)
 
     Output:
-    z_samp - tf.float64 tensor the same shape as traj_probs[...,prob_idx] of ones (spin-up)
+    z_samp - tf.float64 tensor the same shape as traj_probs of ones (spin-up)
              and zeros (spin-down)
-    eps    - Uniform random tensor the same shape as z_samp used to sample spins
+    eps    - Uniform random tensor the same shape as traj_probs used to sample spins
     '''
-  assert(prob_idx < 6)
-  eps = tf.random.uniform(traj_probs[:,:,:,prob_idx].shape, minval=0, maxval=1, dtype=tf.float64)
-  z_samp = tf.cast(eps < traj_probs[:,:,:,prob_idx], tf.float64)
+  eps = tf.random.uniform(traj_probs.shape, minval=0, maxval=1, dtype=tf.float64)
+  z_samp = tf.cast(eps < traj_probs, tf.float64)
   return z_samp, eps
 
 def run_model_2d(rho0, params, num_traj, mint=0.0, maxt=1.0, deltat=2**(-8), comp_i=True, sim_noise=True, start_meas=0):
