@@ -429,6 +429,9 @@ def build_stacked_model(grp_size, seq_len, num_features, lstm_size, rho0, deltat
 def param_metric(y_true, y_pred):
     return tf.sqrt(tf.keras.metrics.mean_squared_error(y_true[:,-1,-1], y_pred[:,-1,-1]))
 
+def param_metric_volt(y_true, y_pred):
+    return tf.sqrt(tf.keras.metrics.mean_squared_error(y_true[:,-1,0,-1], y_pred[:,-1,0,-1]))
+
 def param_loss(y_true, y_pred):
     return tf.keras.metrics.mean_squared_error(y_true[:,0], y_pred[:,0])
 

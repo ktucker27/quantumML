@@ -137,7 +137,7 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
       ivec_traj = tf.reshape(tf.math.real(ivec), [self.num_traj,-1,tf.shape(ivec)[1]])
       ivec_mean = tf.reduce_mean(ivec_traj, axis=0)
       ivec_std = tf.math.reduce_std(ivec_traj, axis=0)
-      ivec_out = tf.concat([ivec_mean[...,tf.newaxis], ivec_std[...,tf.newaxis]], axis=-1)
+      ivec_out = tf.concat([ivec_mean[...,tf.newaxis], ivec_std[...,tf.newaxis], tf.cast(tf.tile(inputs, multiples=[1,2])[:,:,tf.newaxis], dtype=tf.float64)], axis=-1)
       return ivec_out, [rhovecs, ivec, t]
 
     # Average over trajectories
@@ -256,7 +256,7 @@ def build_flex_model(seq_len, lstm_size, rho0, params, deltat):
   
   return model
 
-def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, lstm_size, num_params, rho0, params, deltat, num_traj=1, start_meas=0):
+def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, lstm_size, num_params, rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False):
   model = tf.keras.Sequential()
 
   first = True
@@ -297,7 +297,7 @@ def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes,
 
   model.add(tf.keras.layers.RNN(EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
                                                  maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
-                                                 num_traj=num_traj, input_param=3, start_meas=start_meas),
+                                                 num_traj=num_traj, input_param=3, start_meas=start_meas, comp_iq=comp_iq),
                                 stateful=False,
                                 return_sequences=True,
                                 name='physical_layer'))
