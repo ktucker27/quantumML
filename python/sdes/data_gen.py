@@ -10,13 +10,36 @@ sys.path.append(os.path.join(parent, 'models'))
 
 import fusion
 
-def gen_sde_data(grp_size, batch_size=1, sim_noise=True, start_meas=0):
+def gen_noise_free(epsilons, mint, maxt, deltat, stride, start_meas=0):
+    omega = 1.395
+    kappa = 0.83156
+    eta = 0.1469
+
+    num_traj = epsilons.shape[0]
+    params = np.array([omega,2.0*kappa,eta], dtype=np.float32)
+    
+    traj_inputs = tf.tile(params[tf.newaxis,:], multiples=[num_traj,1])
+    traj_inputs = tf.concat([traj_inputs, epsilons[:,tf.newaxis]], axis=1)
+
+    sx, sy, sz = sde_systems.paulis()
+    rho0 = sde_systems.get_init_rho(sz, sz, 0, 0)[tf.newaxis,...]
+
+    rhovec, ivec, _, _ = fusion.run_model_2d(rho0, traj_inputs, num_traj, mint=mint, maxt=maxt, deltat=deltat, sim_noise=False, start_meas=start_meas)
+    probs = sde_systems.get_2d_probs(rhovec)
+    probs = tf.math.real(probs)
+
+    return ivec, probs
+
+def gen_sde_data(epsilons, mint, maxt, deltat, stride, grp_size, batch_size=1, sim_noise=True, start_meas=0):
     '''
     Input:
-    grp_size   - Number of trajectories per batch
-    batch_size - Number of batches per parameter combo
-    sim_noise  - Whether or not to simulate noise in weak/strong measurements
-    start_meas - Time at which to turn on weak measurement
+    epsilons           - Epsilon values for simulations
+    mint, maxt, deltat - Defines time grid
+    stride             - Number of time points between strong measurements
+    grp_size           - Number of trajectories per batch
+    batch_size         - Number of batches per parameter combo
+    sim_noise          - Whether or not to simulate noise in weak/strong measurements
+    start_meas         - Time at which to turn on weak measurement
 
     Returns:
     voltages   - shape = [num_eps*batch_size, grp_size, num_times, num_qubits]
@@ -28,19 +51,11 @@ def gen_sde_data(grp_size, batch_size=1, sim_noise=True, start_meas=0):
     kappa = 0.83156
     eta = 0.1469
 
-    epsilons = np.arange(0.0, 2.0, 0.05)
     max_tries = 10
     #tol = 1e-5
     tol = 1e-2
     imag_tol = 7e-2
     batch_size = 1
-
-    mint = 0.0
-    maxt = 4.0
-    deltat=2**(-8)
-    start_meas = 0
-
-    stride = 64
 
     sx, sy, sz = sde_systems.paulis()
     rho0 = sde_systems.get_init_rho(sz, sz, 0, 0)[tf.newaxis,...]
