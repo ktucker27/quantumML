@@ -18,13 +18,16 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
   discrepancy learning
   '''
 
-  def __init__(self, a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag, rho0, maxt, deltat, params, num_traj=1, input_param=0, comp_iq=False, sim_noise=False, start_meas=0, **kwargs):
+  def __init__(self, a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag, rho0,
+               maxt, deltat, params, num_traj=1, input_param=0, comp_iq=False, sim_noise=False,
+               start_meas=0, meas_param=-1, **kwargs):
     self.rho0 = tf.reshape(rho0, [-1])
     self.maxt = maxt
     self.deltat = deltat
     self.num_traj = num_traj
     self.params = params
     self.input_param = input_param
+    self.meas_param = meas_param
     self.comp_iq = comp_iq
     self.sim_noise = sim_noise
     self.start_meas = start_meas
@@ -71,11 +74,16 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     emod = sde_solve.EulerMultiDModel(mint, maxt, deltat, self.flex.a, b, d, m, params.shape[1], params, [True, True, True, True], create_params=False)
     xvec = emod(x0, num_traj, wvec, params)
     rhovec = sde_systems.unwrap_x_to_rho(tf.reshape(tf.transpose(xvec, perm=[0,2,1]), [-1,10]), self.pdim)
-    #rhovec = tf.map_fn(lambda x: sde_systems.project_to_rho(x, self.pdim), rhovec/tf.linalg.trace(rhovec)[:,tf.newaxis,tf.newaxis])
     rhovec = tf.reshape(rhovec, [num_traj,-1,self.pdim,self.pdim])
 
     # Simulate the voltage record
     if self.comp_iq:
+      # Project onto the space of physical states before computing voltages (the initial state shouldn't need a projection so leave it out)
+      rhovec_proj = tf.reshape(rhovec[:,1:,:,:], [-1,self.pdim,self.pdim])
+      rhovec_proj = tf.map_fn(lambda x: sde_systems.project_to_rho(x, self.pdim), rhovec_proj/tf.linalg.trace(rhovec_proj)[:,tf.newaxis,tf.newaxis])
+      rhovec_proj = tf.reshape(rhovec_proj, [-1,tf.shape(rhovec)[1]-1,self.pdim,self.pdim])
+      rhovec = tf.concat([rhovec[:,:1,:,:], rhovec_proj], axis=1)
+
       traj_sdes1 = sde_systems.RabiWeakMeasTrajSDE(rhovec, deltat, 0, self.start_meas)
       ai = traj_sdes1.mia
       if self.sim_noise:
@@ -111,14 +119,18 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
 
     for ii in range(self.params.shape[0]):
       if ii == self.input_param:
-        param_inputs = inputs + 1.0e-8
+        param_inputs = inputs[:,:1] + 1.0e-8
       else:
-        param_inputs = tf.cast(p_t[ii], inputs.dtype)*tf.ones(tf.shape(inputs), dtype=inputs.dtype)
+        param_inputs = tf.cast(p_t[ii], inputs.dtype)*tf.ones(tf.shape(inputs[:,:1]), dtype=inputs.dtype)
 
       if ii == 0:
         traj_inputs = param_inputs
       else:
         traj_inputs = tf.concat((traj_inputs, param_inputs), axis=1)
+
+    # Append measurement types onto the end if provided
+    if self.meas_param >= 0:
+      traj_inputs = tf.concat([traj_inputs, inputs[:,self.meas_param:]], axis=1)
 
     #traj_inputs = tf.squeeze(traj_inputs)
     traj_inputs = tf.tile(traj_inputs, multiples=[self.num_traj,1])
@@ -137,7 +149,7 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
       ivec_traj = tf.reshape(tf.math.real(ivec), [self.num_traj,-1,tf.shape(ivec)[1]])
       ivec_mean = tf.reduce_mean(ivec_traj, axis=0)
       ivec_std = tf.math.reduce_std(ivec_traj, axis=0)
-      ivec_out = tf.concat([ivec_mean[...,tf.newaxis], ivec_std[...,tf.newaxis], tf.cast(tf.tile(inputs, multiples=[1,2])[:,:,tf.newaxis], dtype=tf.float64)], axis=-1)
+      ivec_out = tf.concat([ivec_mean[...,tf.newaxis], ivec_std[...,tf.newaxis], tf.cast(tf.tile(inputs[:,:1], multiples=[1,2])[:,:,tf.newaxis], dtype=tf.float64)], axis=-1)
       return ivec_out, [rhovecs, ivec, t]
 
     # Average over trajectories
@@ -158,7 +170,7 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     #mask = tf.math.logical_not(tf.math.is_nan(tf.reduce_max(tf.math.real(probs), axis=[1])))
     #probs = tf.boolean_mask(probs, mask)
 
-    return tf.concat((probs, tf.cast(inputs, dtype=tf.float64)), axis=1), [rhovecs, ivec, t]
+    return tf.concat((probs, tf.cast(inputs[:,:1], dtype=tf.float64)), axis=1), [rhovecs, ivec, t]
 
 class SDERNNCell(tf.keras.layers.Layer):
   ''' An RNN cell for taking a single Euler step with neural network drift and diffusion functions
@@ -256,7 +268,9 @@ def build_flex_model(seq_len, lstm_size, rho0, params, deltat):
   
   return model
 
-def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, lstm_size, num_params, rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False):
+def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, lstm_size, num_params, rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False, meas_op=2):
+  params = np.concatenate([params, tf.one_hot([meas_op], depth=3)[0,:].numpy()])
+
   model = tf.keras.Sequential()
 
   first = True
@@ -307,6 +321,106 @@ def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes,
   xdim = 10
   model.layers[-1].cell.flex.a_cell_real.trainable_weights[-1].assign(tf.zeros(4*xdim))
   model.layers[-1].cell.flex.a_cell_imag.trainable_weights[-1].assign(tf.zeros(4*xdim))
+  #model.layers[-1].cell.flex.b_cell_real.trainable_weights[-1].assign(tf.zeros(4*xdim))
+  #model.layers[-1].cell.flex.b_cell_imag.trainable_weights[-1].assign(tf.zeros(4*xdim))
+
+  return model
+
+def build_multimeas_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, lstm_size, num_params, rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False):
+  input_layer = tf.keras.layers.Input(shape=(seq_len, num_features+1, grp_size))
+  x = input_layer
+  meas_params = tf.cast(tf.one_hot(tf.cast(x[:,-1,-1,0], tf.int32), depth=3), x.dtype)
+
+  first = True
+
+  if avg_size is not None:
+    x = tf.keras.layers.AveragePooling2D((avg_size, 1), strides=1)(x[...,:num_features,:])
+    first = False
+  else:
+    avg_size = 20
+
+  for conv_idx, conv_size in enumerate(conv_sizes):
+    if first:
+      x = tf.keras.layers.Conv2D(conv_size, (avg_size, num_features))(x[...,:num_features,:])
+      first = False
+    else:
+      if conv_idx == 0:
+        x = tf.keras.layers.Conv2D(conv_size, (avg_size, num_features), strides=2)(x)
+      elif conv_idx == 1:
+        x = tf.keras.layers.Conv2D(conv_size, (avg_size,1))(x)
+      else:
+        x = tf.keras.layers.Conv2D(conv_size, (avg_size,1))(x)
+    x = tf.keras.layers.AveragePooling2D((avg_size,1), strides=1)(x)
+
+  x = tf.keras.layers.Flatten()(x)
+
+  for size in encoder_sizes:
+    x = tf.keras.layers.Dense(size, activation='relu')(x)
+
+  x = tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: fusion.max_activation_mean0(x, max_val=12, xscale=100.0))(x)
+  #x = tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: fusion.max_activation_mean0(x, max_val=6, xscale=100.0))(x)
+  #x = tf.keras.layers.Lambda(lambda x: x + 1)(x)
+
+  x = tf.concat([x, meas_params], axis=1)
+  x = tf.keras.layers.RepeatVector(seq_len, input_shape=[num_params+1])(x)
+
+  # Add the physical RNN layer
+  a_rnn_cell_real = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+  a_rnn_cell_imag = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+  b_rnn_cell_real = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+  b_rnn_cell_imag = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+
+  rnn_layer = tf.keras.layers.RNN(EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
+                                                   maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
+                                                   num_traj=num_traj, input_param=3, start_meas=start_meas, comp_iq=comp_iq,
+                                                   meas_param=num_params),
+                                stateful=False,
+                                return_sequences=True,
+                                name='physical_layer')
+  
+  # Make sure the biases are zero
+  # TODO - Why is this needed?
+  #xdim = 10
+  #rnn_layer.cell.flex.a_cell_real.trainable_weights[-1].assign(tf.zeros(4*xdim))
+  #rnn_layer.cell.flex.a_cell_imag.trainable_weights[-1].assign(tf.zeros(4*xdim))
+  #model.layers[-1].cell.flex.b_cell_real.trainable_weights[-1].assign(tf.zeros(4*xdim))
+  #model.layers[-1].cell.flex.b_cell_imag.trainable_weights[-1].assign(tf.zeros(4*xdim))
+
+  output = rnn_layer(x)
+
+  return tf.keras.Model(input_layer, output, name='encoder')
+
+def build_datagen_model(seq_len, lstm_size, rho0, num_params, params, deltat, num_traj=1, start_meas=0, sim_noise=True, comp_iq=True):
+  model = tf.keras.Sequential()
+
+  model.add(tf.keras.layers.Input(shape=(num_params)))
+
+  model.add(tf.keras.layers.RepeatVector(seq_len, input_shape=[num_params]))
+
+  # Add the physical RNN layer
+  a_rnn_cell_real = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+  a_rnn_cell_imag = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+  b_rnn_cell_real = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+  b_rnn_cell_imag = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+
+  a_rnn_cell_real.trainable = False
+  a_rnn_cell_imag.trainable = False
+  b_rnn_cell_real.trainable = False
+  b_rnn_cell_imag.trainable = False
+
+  model.add(tf.keras.layers.RNN(EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
+                                                 maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
+                                                 num_traj=num_traj, input_param=3, start_meas=start_meas, comp_iq=comp_iq,
+                                                 sim_noise=sim_noise),
+                                stateful=False,
+                                return_sequences=True,
+                                name='physical_layer'))
+  
+  # Make sure the biases are zero
+  # TODO - Why is this needed?
+  #xdim = 10
+  #model.layers[-1].cell.flex.a_cell_real.trainable_weights[-1].assign(tf.zeros(4*xdim))
+  #model.layers[-1].cell.flex.a_cell_imag.trainable_weights[-1].assign(tf.zeros(4*xdim))
   #model.layers[-1].cell.flex.b_cell_real.trainable_weights[-1].assign(tf.zeros(4*xdim))
   #model.layers[-1].cell.flex.b_cell_imag.trainable_weights[-1].assign(tf.zeros(4*xdim))
 
