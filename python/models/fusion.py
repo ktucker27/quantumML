@@ -194,7 +194,7 @@ def run_model_2d(rho0, params, num_traj, mint=0.0, maxt=1.0, deltat=2**(-8), com
 
   tvec = np.arange(mint,maxt,deltat)
   wvec = tf.cast(tf.random.normal(stddev=math.sqrt(deltat), shape=[num_traj,tvec.shape[0]-1,m,1]), dtype=x0.dtype)
-  emod = sde_solve.EulerMultiDModel(mint, maxt, deltat, a, b, d, m, params.shape[-1], params, [True, True, True, True], create_params=False)
+  emod = sde_solve.EulerMultiDModel(mint, maxt, deltat, a, b, d, m, params.shape[-1], params, [True, True, True, True, True], create_params=False)
   #emod = sde_solve.MilsteinModel(mint, maxt, deltat, a, b, bp, d, m, p, len(params), params, [True, True, True, True], create_params=False)
 
   xvec = emod(x0, num_traj, wvec, params)
@@ -211,7 +211,7 @@ def run_model_2d(rho0, params, num_traj, mint=0.0, maxt=1.0, deltat=2**(-8), com
       bi = traj_sdes1.mib
     else:
       bi = traj_sdes1.mib_zeros
-    emod_i = sde_solve.EulerMultiDModel(mint, maxt, deltat, ai, bi, 1, 1, params.shape[-1], params, [True, True, True, True], create_params=False)
+    emod_i = sde_solve.EulerMultiDModel(mint, maxt, deltat, ai, bi, 1, 1, params.shape[-1], params, [True, True, True, True, True], create_params=False)
     ivec1 = emod_i(tf.zeros(1, dtype=tf.complex128), num_traj, wvec[:,:,0,:][:,:,tf.newaxis,:])
 
     traj_sdes2 = sde_systems.RabiWeakMeasTrajSDE(rhovec, deltat, 1, start_meas)
@@ -220,7 +220,7 @@ def run_model_2d(rho0, params, num_traj, mint=0.0, maxt=1.0, deltat=2**(-8), com
       bi = traj_sdes2.mib
     else:
       bi = traj_sdes2.mib_zeros
-    emod_i = sde_solve.EulerMultiDModel(mint, maxt, deltat, ai, bi, 1, 1, params.shape[-1], params, [True, True, True, True], create_params=False)
+    emod_i = sde_solve.EulerMultiDModel(mint, maxt, deltat, ai, bi, 1, 1, params.shape[-1], params, [True, True, True, True, True], create_params=False)
     ivec2 = emod_i(tf.zeros(1, dtype=tf.complex128), num_traj, wvec[:,:,1,:][:,:,tf.newaxis,:])
 
     ivec = tf.transpose(tf.concat([ivec1, ivec2], axis=1), perm=[0,2,1])

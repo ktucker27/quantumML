@@ -10,7 +10,7 @@ sys.path.append(os.path.join(parent, 'models'))
 
 import fusion
 
-def gen_noise_free(epsilons, mint, maxt, deltat, stride, start_meas=0):
+def gen_noise_free(epsilons, mint, maxt, deltat, stride, start_meas=0, meas_op=2):
     omega = 1.395
     kappa = 0.83156
     eta = 0.1469
@@ -19,7 +19,7 @@ def gen_noise_free(epsilons, mint, maxt, deltat, stride, start_meas=0):
     params = np.array([omega,2.0*kappa,eta], dtype=np.float32)
     
     traj_inputs = tf.tile(params[tf.newaxis,:], multiples=[num_traj,1])
-    traj_inputs = tf.concat([traj_inputs, epsilons[:,tf.newaxis]], axis=1)
+    traj_inputs = tf.concat([traj_inputs, epsilons[:,tf.newaxis], float(meas_op)*tf.ones([num_traj,1], tf.float32)], axis=1)
 
     sx, sy, sz = sde_systems.paulis()
     rho0 = sde_systems.get_init_rho(sz, sz, 0, 0)[tf.newaxis,...]
@@ -28,9 +28,9 @@ def gen_noise_free(epsilons, mint, maxt, deltat, stride, start_meas=0):
     probs = sde_systems.get_2d_probs(rhovec)
     probs = tf.math.real(probs)
 
-    return ivec, probs
+    return ivec, probs, rhovec
 
-def gen_sde_data(epsilons, mint, maxt, deltat, stride, grp_size, batch_size=1, sim_noise=True, start_meas=0):
+def gen_sde_data(epsilons, mint, maxt, deltat, stride, grp_size, batch_size=1, sim_noise=True, start_meas=0, meas_op=2):
     '''
     Input:
     epsilons           - Epsilon values for simulations
@@ -40,6 +40,7 @@ def gen_sde_data(epsilons, mint, maxt, deltat, stride, grp_size, batch_size=1, s
     batch_size         - Number of batches per parameter combo
     sim_noise          - Whether or not to simulate noise in weak/strong measurements
     start_meas         - Time at which to turn on weak measurement
+    meas_op            - Operator for weak measurements (0,1,2) = (X,Y,Z)
 
     Returns:
     voltages   - shape = [num_eps*batch_size, grp_size, num_times, num_qubits]
@@ -67,7 +68,7 @@ def gen_sde_data(epsilons, mint, maxt, deltat, stride, grp_size, batch_size=1, s
       print(f'eps = {eps}, {eidx+1}/{epsilons.shape[0]}')
       for batch_idx in range(batch_size):
         print(f'Batch = {batch_idx}')
-        params = np.array([omega,2.0*kappa,eta,eps], dtype=np.float32)
+        params = np.array([omega,2.0*kappa,eta,eps,float(meas_op)], dtype=np.float32)
 
         success = False
         num_tries = 0
