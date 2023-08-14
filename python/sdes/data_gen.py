@@ -19,7 +19,7 @@ def gen_noise_free(epsilons, mint, maxt, deltat, stride, start_meas=0, meas_op=2
     params = np.array([omega,2.0*kappa,eta], dtype=np.float32)
     
     traj_inputs = tf.tile(params[tf.newaxis,:], multiples=[num_traj,1])
-    traj_inputs = tf.concat([traj_inputs, epsilons[:,tf.newaxis], float(meas_op)*tf.ones([num_traj,1], tf.float32)], axis=1)
+    traj_inputs = tf.concat([traj_inputs, epsilons[:,tf.newaxis], tf.one_hot([meas_op], depth=3)*tf.ones([num_traj,3], tf.float32)], axis=1)
 
     sx, sy, sz = sde_systems.paulis()
     rho0 = sde_systems.get_init_rho(sz, sz, 0, 0)[tf.newaxis,...]
@@ -68,7 +68,8 @@ def gen_sde_data(epsilons, mint, maxt, deltat, stride, grp_size, batch_size=1, s
       print(f'eps = {eps}, {eidx+1}/{epsilons.shape[0]}')
       for batch_idx in range(batch_size):
         print(f'Batch = {batch_idx}')
-        params = np.array([omega,2.0*kappa,eta,eps,float(meas_op)], dtype=np.float32)
+        params = np.array([omega,2.0*kappa,eta,eps], dtype=np.float32)
+        params = np.concatenate([params, tf.one_hot([meas_op], depth=3)[0,:].numpy()])
 
         success = False
         num_tries = 0
