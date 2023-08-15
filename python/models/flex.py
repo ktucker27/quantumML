@@ -390,6 +390,76 @@ def build_multimeas_flex_model(seq_len, num_features, grp_size, avg_size, conv_s
 
   return tf.keras.Model(input_layer, output, name='encoder')
 
+def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, lstm_size, td_sizes, encoder_sizes, num_params, rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False):
+  input_layer = tf.keras.layers.Input(shape=(seq_len, num_features+1, num_meas))
+  x = input_layer
+  meas_params = tf.cast(tf.one_hot(tf.cast(x[:,-1,-1,:], tf.int32), depth=3), x.dtype)
+  meas_params = tf.reshape(meas_params, [-1,3]) # shape = [batch_size*num_meas,3]
+
+  x = tf.keras.layers.Reshape([seq_len, num_features*num_meas,1])(x[:,:,:num_features,:])
+
+  if avg_size is not None:
+    x = tf.keras.layers.AveragePooling2D((avg_size, 1), strides=1)(x)
+  else:
+    avg_size = 1
+
+  x = tf.keras.layers.Reshape([seq_len - avg_size + 1, num_features*num_meas])(x)
+
+  enc_rnn_layer = tf.keras.layers.LSTM(lstm_size,
+                                       batch_input_shape=(seq_len, num_features*num_meas),
+                                       dropout=0.0,
+                                       stateful=False,
+                                       return_sequences=True,
+                                       name='lstm_layer')
+
+  x = enc_rnn_layer(x)
+
+  for td_size in td_sizes:
+    x = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(td_size, activation='relu'))(x)
+
+  x = tf.keras.layers.Flatten()(x)
+
+  for size in encoder_sizes:
+    x = tf.keras.layers.Dense(size, activation='relu')(x)
+
+  x = tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: fusion.max_activation_mean0(x, max_val=12, xscale=100.0))(x)
+  #x = tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: fusion.max_activation_mean0(x, max_val=6, xscale=100.0))(x)
+  #x = tf.keras.layers.Lambda(lambda x: x + 1)(x)
+
+  x = tf.repeat(x, num_meas, axis=0)
+  x = tf.concat([x, meas_params], axis=1)
+  x = tf.keras.layers.RepeatVector(seq_len, input_shape=[num_params+3])(x)
+
+  # Add the physical RNN layer
+  dec_lstm_size = 10
+  a_rnn_cell_real = tf.keras.layers.LSTMCell(dec_lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+  a_rnn_cell_imag = tf.keras.layers.LSTMCell(dec_lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+  b_rnn_cell_real = tf.keras.layers.LSTMCell(dec_lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+  b_rnn_cell_imag = tf.keras.layers.LSTMCell(dec_lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+
+  dec_rnn_layer = tf.keras.layers.RNN(EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
+                                                       maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
+                                                       num_traj=num_traj, input_param=3, start_meas=start_meas, comp_iq=comp_iq,
+                                                       meas_param=num_params),
+                                      stateful=False,
+                                      return_sequences=True,
+                                      name='physical_layer')
+  
+  # Make sure the biases are zero
+  # TODO - Why is this needed?
+  #xdim = 10
+  #rnn_layer.cell.flex.a_cell_real.trainable_weights[-1].assign(tf.zeros(4*xdim))
+  #rnn_layer.cell.flex.a_cell_imag.trainable_weights[-1].assign(tf.zeros(4*xdim))
+  #model.layers[-1].cell.flex.b_cell_real.trainable_weights[-1].assign(tf.zeros(4*xdim))
+  #model.layers[-1].cell.flex.b_cell_imag.trainable_weights[-1].assign(tf.zeros(4*xdim))
+
+  x = dec_rnn_layer(x)
+
+  # Split the measurement types back out from the batch index
+  output = tf.transpose(tf.reshape(x, [-1,num_meas,seq_len,num_features,3]), perm=[0,2,3,4,1])
+
+  return tf.keras.Model(input_layer, output, name='encoder')
+
 def build_datagen_model(seq_len, lstm_size, rho0, num_params, params, deltat, num_traj=1, start_meas=0, sim_noise=True, comp_iq=True):
   model = tf.keras.Sequential()
 
