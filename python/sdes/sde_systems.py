@@ -453,13 +453,14 @@ class FlexSDE:
     accounts for discrepancies between the assumed model and the true system
     '''
 
-    def __init__(self,a,b,a_cell_real,a_cell_imag,b_cell_real,b_cell_imag):
+    def __init__(self,a,b,a_cell_real,a_cell_imag,b_cell_real,b_cell_imag,num_meas=1):
         self.af = a
         self.bf = b
         self.a_cell_real = a_cell_real
         self.a_cell_imag = a_cell_imag
         self.b_cell_real = b_cell_real
         self.b_cell_imag = b_cell_imag
+        self.num_meas = num_meas
 
     def init_states(self, batch_size):
         self.a_state_real = self.a_cell_real.get_initial_state(batch_size=batch_size, dtype=tf.float32)[0]
@@ -472,22 +473,32 @@ class FlexSDE:
         self.b_carry_imag = self.b_cell_imag.get_initial_state(batch_size=batch_size, dtype=tf.float32)[1]
     
     def a(self,t,x,p):
-        cell_out_real, states = self.a_cell_real(p,[tf.cast(tf.math.real(x[:,:,0]), tf.float32), self.a_carry_real])
+        p_in = p
+        if self.num_meas > 1:
+            #p_in = tf.reshape(tf.transpose(tf.matmul(p[:,:-self.num_meas,tf.newaxis], p[:,tf.newaxis,-self.num_meas:]), perm=(0,2,1)), [tf.shape(p)[0],12])
+            p_in = p[:,:-self.num_meas]
+
+        cell_out_real, states = self.a_cell_real(p_in,[tf.cast(tf.math.real(x[:,:,0]), tf.float32), self.a_carry_real])
         self.a_state_real = states[0]
         self.a_carry_real = states[1]
 
-        cell_out_imag, states = self.a_cell_imag(p,[tf.cast(tf.math.imag(x[:,:,0]), tf.float32), self.a_carry_imag])
+        cell_out_imag, states = self.a_cell_imag(p_in,[tf.cast(tf.math.imag(x[:,:,0]), tf.float32), self.a_carry_imag])
         self.a_state_imag = states[0]
         self.a_carry_imag = states[1]
 
         return self.af(t,x,p) + tf.complex(tf.cast(cell_out_real, tf.float64), tf.cast(cell_out_imag, tf.float64))[:,:,tf.newaxis]
 
     def b(self,t,x,p):
-        cell_out_real, states = self.b_cell_real(p,[tf.cast(tf.math.real(x[:,:,0]), tf.float32), self.b_carry_real])
+        p_in = p
+        if self.num_meas > 1:
+            #p_in = tf.reshape(tf.transpose(tf.matmul(p[:,:-self.num_meas,tf.newaxis], p[:,tf.newaxis,-self.num_meas:]), perm=(0,2,1)), [tf.shape(p)[0],12])
+            p_in = p[:,:-self.num_meas]
+
+        cell_out_real, states = self.b_cell_real(p_in,[tf.cast(tf.math.real(x[:,:,0]), tf.float32), self.b_carry_real])
         self.b_state_real = states[0]
         self.b_carry_real = states[1]
 
-        cell_out_imag, states = self.b_cell_imag(p,[tf.cast(tf.math.imag(x[:,:,0]), tf.float32), self.b_carry_imag])
+        cell_out_imag, states = self.b_cell_imag(p_in,[tf.cast(tf.math.imag(x[:,:,0]), tf.float32), self.b_carry_imag])
         self.b_state_imag = states[0]
         self.b_carry_imag = states[1]
 

@@ -20,7 +20,7 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
 
   def __init__(self, a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag, rho0,
                maxt, deltat, params, num_traj=1, input_param=0, comp_iq=False, sim_noise=False,
-               start_meas=0, meas_param=-1, **kwargs):
+               start_meas=0, meas_param=-1, num_meas=1, **kwargs):
     self.rho0 = tf.reshape(rho0, [-1])
     self.maxt = maxt
     self.deltat = deltat
@@ -52,7 +52,7 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     self.b_rnn_cell_real.trainable = False
     self.b_rnn_cell_imag.trainable = False
 
-    self.flex = sde_systems.FlexSDE(a, b, self.a_rnn_cell_real, self.a_rnn_cell_imag, self.b_rnn_cell_real, self.b_rnn_cell_imag)
+    self.flex = sde_systems.FlexSDE(a, b, self.a_rnn_cell_real, self.a_rnn_cell_imag, self.b_rnn_cell_real, self.b_rnn_cell_imag, num_meas=num_meas)
 
     super(EulerFlexRNNCell, self).__init__(**kwargs)
 
@@ -440,7 +440,7 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, lstm_si
   dec_rnn_layer = tf.keras.layers.RNN(EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
                                                        maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
                                                        num_traj=num_traj, input_param=3, start_meas=start_meas, comp_iq=comp_iq,
-                                                       meas_param=num_params),
+                                                       meas_param=num_params, num_meas=num_meas),
                                       stateful=False,
                                       return_sequences=True,
                                       name='physical_layer')
