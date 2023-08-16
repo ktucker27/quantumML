@@ -460,14 +460,18 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, lstm_si
 
   return tf.keras.Model(input_layer, output, name='encoder')
 
-def build_datagen_model(seq_len, lstm_size, rho0, num_params, params, deltat, num_traj=1, start_meas=0, sim_noise=True, comp_iq=True):
-  model = tf.keras.Sequential()
+def build_datagen_model(seq_len, num_features, rho0, num_params, params, deltat, num_traj=1, start_meas=0, sim_noise=True, comp_iq=True, num_meas=1):
+  input_layer = tf.keras.layers.Input(shape=(num_params))
+  x = input_layer
 
-  model.add(tf.keras.layers.Input(shape=(num_params)))
+  meas_params = tf.tile(tf.one_hot(tf.range(0,num_meas,1), depth=3), multiples=[tf.shape(x)[0],1])
 
-  model.add(tf.keras.layers.RepeatVector(seq_len, input_shape=[num_params]))
+  x = tf.repeat(x, num_meas, axis=0)
+  x = tf.concat([x, meas_params], axis=1)
+  x = tf.keras.layers.RepeatVector(seq_len, input_shape=[num_params])(x)
 
   # Add the physical RNN layer
+  lstm_size = 10
   a_rnn_cell_real = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
   a_rnn_cell_imag = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
   b_rnn_cell_real = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
@@ -478,13 +482,13 @@ def build_datagen_model(seq_len, lstm_size, rho0, num_params, params, deltat, nu
   b_rnn_cell_real.trainable = False
   b_rnn_cell_imag.trainable = False
 
-  model.add(tf.keras.layers.RNN(EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
-                                                 maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
-                                                 num_traj=num_traj, input_param=3, start_meas=start_meas, comp_iq=comp_iq,
-                                                 sim_noise=sim_noise),
+  rnn_layer = tf.keras.layers.RNN(EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
+                                                   maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
+                                                   num_traj=num_traj, input_param=3, start_meas=start_meas, comp_iq=comp_iq,
+                                                   sim_noise=sim_noise, meas_param=num_params, num_meas=num_meas),
                                 stateful=False,
                                 return_sequences=True,
-                                name='physical_layer'))
+                                name='physical_layer')
   
   # Make sure the biases are zero
   # TODO - Why is this needed?
@@ -494,4 +498,9 @@ def build_datagen_model(seq_len, lstm_size, rho0, num_params, params, deltat, nu
   #model.layers[-1].cell.flex.b_cell_real.trainable_weights[-1].assign(tf.zeros(4*xdim))
   #model.layers[-1].cell.flex.b_cell_imag.trainable_weights[-1].assign(tf.zeros(4*xdim))
 
-  return model
+  x = rnn_layer(x)
+
+  # Split the measurement types back out from the batch index
+  output = tf.transpose(tf.reshape(x, [-1,num_meas,seq_len,num_features,3]), perm=[0,2,3,4,1])
+
+  return tf.keras.Model(input_layer, output, name='data_gen_model')
