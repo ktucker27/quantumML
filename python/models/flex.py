@@ -269,7 +269,8 @@ def build_flex_model(seq_len, lstm_size, rho0, params, deltat):
   return model
 
 def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, lstm_size, num_params, rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False, meas_op=2):
-  params = np.concatenate([params, tf.one_hot([meas_op], depth=3)[0,:].numpy()])
+  num_meas = 3
+  params = np.concatenate([params, tf.one_hot([meas_op], depth=num_meas)[0,:].numpy()])
 
   model = tf.keras.Sequential()
 
@@ -311,7 +312,8 @@ def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes,
 
   model.add(tf.keras.layers.RNN(EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
                                                  maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
-                                                 num_traj=num_traj, input_param=3, start_meas=start_meas, comp_iq=comp_iq),
+                                                 num_traj=num_traj, input_param=3, start_meas=start_meas, comp_iq=comp_iq,
+                                                 num_meas=num_meas),
                                 stateful=False,
                                 return_sequences=True,
                                 name='physical_layer'))
@@ -327,9 +329,10 @@ def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes,
   return model
 
 def build_multimeas_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, lstm_size, num_params, rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False):
+  num_meas = 3
   input_layer = tf.keras.layers.Input(shape=(seq_len, num_features+1, grp_size))
   x = input_layer
-  meas_params = tf.cast(tf.one_hot(tf.cast(x[:,-1,-1,0], tf.int32), depth=3), x.dtype)
+  meas_params = tf.cast(tf.one_hot(tf.cast(x[:,-1,-1,0], tf.int32), depth=num_meas), x.dtype)
 
   first = True
 
@@ -373,7 +376,7 @@ def build_multimeas_flex_model(seq_len, num_features, grp_size, avg_size, conv_s
   rnn_layer = tf.keras.layers.RNN(EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
                                                    maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
                                                    num_traj=num_traj, input_param=3, start_meas=start_meas, comp_iq=comp_iq,
-                                                   meas_param=num_params),
+                                                   meas_param=num_params, num_meas=num_meas),
                                 stateful=False,
                                 return_sequences=True,
                                 name='physical_layer')

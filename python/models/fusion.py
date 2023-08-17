@@ -372,6 +372,13 @@ def fusion_mse_loss_single(y_true, y_pred):
     
     return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true_ro_results[...,:6], y_pred_ro_results[...,:6]))
 
+def fusion_mse_loss_voltage_zz(y_true, y_pred):
+    # Evaluate the loss for each sample
+    y_true_ro_results = tf.cast(y_true, tf.float32)[...,0]
+    y_pred_ro_results = tf.cast(y_pred, tf.float32)[...,0]
+
+    return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true_ro_results, y_pred_ro_results))
+
 def fusion_mse_loss_voltage_xyz(y_true, y_pred):
     # Evaluate the loss for each sample
     y_true_ro_results = tf.cast(y_true, tf.float32)[:,1:,:2,:3]
