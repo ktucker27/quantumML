@@ -46,13 +46,20 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     self.a_rnn_cell_imag = a_rnn_cell_imag
     self.b_rnn_cell_real = b_rnn_cell_real
     self.b_rnn_cell_imag = b_rnn_cell_imag
+    self.a_dense_real = tf.keras.layers.Dense(10, kernel_initializer='zeros', bias_initializer='zeros')
+    self.a_dense_imag = tf.keras.layers.Dense(10, kernel_initializer='zeros', bias_initializer='zeros')
+    self.b_dense_real = tf.keras.layers.Dense(10, kernel_initializer='zeros', bias_initializer='zeros')
+    self.b_dense_imag = tf.keras.layers.Dense(10, kernel_initializer='zeros', bias_initializer='zeros')
     a = sde_systems.RabiWeakMeasSDE.a
     b = sde_systems.RabiWeakMeasSDE.b
     self.zero_b = sde_systems.ZeroSDE.b
     self.b_rnn_cell_real.trainable = False
     self.b_rnn_cell_imag.trainable = False
 
-    self.flex = sde_systems.FlexSDE(a, b, self.a_rnn_cell_real, self.a_rnn_cell_imag, self.b_rnn_cell_real, self.b_rnn_cell_imag, num_meas=num_meas)
+    self.flex = sde_systems.FlexSDE(a, b,
+                                    self.a_rnn_cell_real, self.a_rnn_cell_imag, self.b_rnn_cell_real, self.b_rnn_cell_imag,
+                                    self.a_dense_real, self.a_dense_imag, self.b_dense_real, self.b_dense_imag,
+                                    num_meas=num_meas)
 
     super(EulerFlexRNNCell, self).__init__(**kwargs)
 
@@ -320,9 +327,9 @@ def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes,
   
   # Make sure the biases are zero
   # TODO - Why is this needed?
-  xdim = 10
-  model.layers[-1].cell.flex.a_cell_real.trainable_weights[-1].assign(tf.zeros(4*xdim))
-  model.layers[-1].cell.flex.a_cell_imag.trainable_weights[-1].assign(tf.zeros(4*xdim))
+  #xdim = 10
+  #model.layers[-1].cell.flex.a_cell_real.trainable_weights[-1].assign(tf.zeros(4*xdim))
+  #model.layers[-1].cell.flex.a_cell_imag.trainable_weights[-1].assign(tf.zeros(4*xdim))
   #model.layers[-1].cell.flex.b_cell_real.trainable_weights[-1].assign(tf.zeros(4*xdim))
   #model.layers[-1].cell.flex.b_cell_imag.trainable_weights[-1].assign(tf.zeros(4*xdim))
 
@@ -393,7 +400,7 @@ def build_multimeas_flex_model(seq_len, num_features, grp_size, avg_size, conv_s
 
   return tf.keras.Model(input_layer, output, name='encoder')
 
-def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, lstm_size, td_sizes, encoder_sizes, num_params, rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False):
+def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lstm_size, dec_lstm_size, td_sizes, encoder_sizes, num_params, rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False):
   input_layer = tf.keras.layers.Input(shape=(seq_len, num_features+1, num_meas))
   x = input_layer
   meas_params = tf.cast(tf.one_hot(tf.cast(x[:,-1,-1,:], tf.int32), depth=3), x.dtype)
@@ -408,7 +415,7 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, lstm_si
 
   x = tf.keras.layers.Reshape([seq_len - avg_size + 1, num_features*num_meas])(x)
 
-  enc_rnn_layer = tf.keras.layers.LSTM(lstm_size,
+  enc_rnn_layer = tf.keras.layers.LSTM(enc_lstm_size,
                                        batch_input_shape=(seq_len, num_features*num_meas),
                                        dropout=0.0,
                                        stateful=False,
@@ -434,7 +441,6 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, lstm_si
   x = tf.keras.layers.RepeatVector(seq_len, input_shape=[num_params+3])(x)
 
   # Add the physical RNN layer
-  dec_lstm_size = 10
   a_rnn_cell_real = tf.keras.layers.LSTMCell(dec_lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
   a_rnn_cell_imag = tf.keras.layers.LSTMCell(dec_lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
   b_rnn_cell_real = tf.keras.layers.LSTMCell(dec_lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
