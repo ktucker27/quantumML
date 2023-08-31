@@ -547,6 +547,8 @@ class RevSDE:
         else:
             model_out = model_out_real
 
+        #return -1.0*(self.eqns.a(t,x,p) - 0.5*self.eqns.bbtx(t,x,p) - \
+        #             0.5*tf.matmul(self.eqns.b(t,x,p), tf.transpose(self.eqns.b(t,x,p), perm=(0,2,1)))*model_out[...,tf.newaxis])
         return -1.0*(self.eqns.a(t,x,p) - 0.0*0.5*self.eqns.bbtx(t,x,p) - \
                      0.5*tf.matmul(self.eqns.b(t,x,p), tf.transpose(self.eqns.b(t,x,p), perm=(0,2,1)))*model_out[...,tf.newaxis])
 
