@@ -183,7 +183,8 @@ class SDERNNCell(tf.keras.layers.Layer):
   ''' An RNN cell for taking a single Euler step with neural network drift and diffusion functions
   '''
 
-  def __init__(self, a_model_real, a_model_imag, b_model_real, b_model_imag, output_dim, x0, maxt, deltat, d, m, params, num_traj=1, use_complex=False, **kwargs):
+  def __init__(self, a_model_real, a_model_imag, b_model_real, b_model_imag, output_dim, x0, maxt, deltat, d, m, params,
+               num_traj=1, use_complex=False, eqns=None, use_rev_sde=False, init_from_input=False, **kwargs):
     self.x0 = x0
     self.maxt = maxt
     self.deltat = deltat
@@ -191,6 +192,9 @@ class SDERNNCell(tf.keras.layers.Layer):
     self.params = params
     self.input_param = -1 # Restoring this will allow input to be used as a parameter
     self.use_complex = use_complex
+    self.init_from_input = init_from_input
+    self.d = d
+    self.m = m
 
     self.state_size = [output_dim, 1]
     self.output_size = output_dim
@@ -201,7 +205,16 @@ class SDERNNCell(tf.keras.layers.Layer):
     self.b_model_imag = b_model_imag
 
     # Setup the NN SDE functions
-    self.nn_sde = sde_systems.NNSDE(self.a_model_real, self.a_model_imag, self.b_model_real, self.b_model_imag, d, m, self.use_complex)
+    if use_rev_sde:
+      self.nn_sde = sde_systems.RevSDE(eqns, self.a_model_real, self.a_model_imag)
+    else:
+      if eqns is None:
+        a = sde_systems.ZeroSDE.a
+        b = sde_systems.ZeroSDE.b
+      else:
+        a = eqns.a
+        b = eqns.b
+      self.nn_sde = sde_systems.NNSDE(self.a_model_real, self.a_model_imag, self.b_model_real, self.b_model_imag, a, b, d, m, self.use_complex)
 
     super(SDERNNCell, self).__init__(**kwargs)
 
@@ -209,23 +222,24 @@ class SDERNNCell(tf.keras.layers.Layer):
     if self.use_complex:
       return [tf.ones([self.num_traj*batch_size,1], dtype=tf.complex128)*tf.cast(tf.constant(self.x0)[tf.newaxis,:], dtype=tf.complex128), 0.0]
     else:
-      return [tf.ones([self.num_traj*batch_size,1], dtype=tf.float64)*tf.cast(tf.constant(self.x0)[tf.newaxis,:], dtype=tf.float64), 0.0]
+      return [tf.ones([self.num_traj*batch_size,1], dtype=tf.float32)*tf.cast(tf.constant(self.x0)[tf.newaxis,:], dtype=tf.float32), 0.0]
   
   def run_model(self, x0, params, num_traj, mint, maxt, deltat=2**(-8), tten=None):
-    d = self.state_size[0]
-    m = 2
-
     tvec = np.arange(mint,maxt,deltat)
-    #wvec = tf.cast(tf.random.normal(stddev=math.sqrt(deltat), shape=[num_traj,tvec.shape[0]-1,m,1]), dtype=x0.dtype)
-    wvec = tf.cast(params[:,tf.newaxis,:m,tf.newaxis], dtype=x0.dtype)
-    emod = sde_solve.EulerMultiDModel(mint, maxt, deltat, self.nn_sde.a, self.nn_sde.b, d, m, params.shape[1]-m, params[:,m:], None, create_params=False, tten=tten)
-    xvec = emod(x0, num_traj, wvec, params[:,m:])
+    wvec = tf.cast(tf.random.normal(stddev=math.sqrt(deltat), shape=[num_traj,tvec.shape[0]-1,self.m,1]), dtype=x0.dtype)
+    #wvec = tf.cast(params[:,tf.newaxis,:self.m,tf.newaxis], dtype=x0.dtype)
+    emod = sde_solve.EulerMultiDModel(mint, maxt, deltat, self.nn_sde.a, self.nn_sde.b, self.d, self.m, params.shape[1]-self.m, params[:,self.m:], None, create_params=False, tten=tten)
+    xvec = emod(x0, num_traj, wvec, params[:,self.m:])
 
     return xvec
 
   def call(self, inputs, states):
     x = states[0]
     t = states[1]
+
+    if self.init_from_input:
+      if t == 0:
+        x = tf.cast(inputs[:,:self.output_size], x.dtype)
 
     if self.input_param >= 0:
       for ii in range(self.params.shape[0]):
@@ -249,7 +263,7 @@ class SDERNNCell(tf.keras.layers.Layer):
     # Advance the state one time step
     tten = tf.range(t, t + 1.5*self.deltat, self.deltat)
     y = self.run_model(x, traj_inputs, num_traj=tf.shape(traj_inputs)[0], mint=0, maxt=self.maxt, deltat=self.deltat, tten=tten)
-    y = y[:,-1]
+    y = y[...,-1]
 
     t = t + self.deltat
 

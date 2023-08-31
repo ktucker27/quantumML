@@ -268,15 +268,18 @@ class MilsteinModel(tf.Module):
 
 class EulerModel(tf.Module):
 
-  def __init__(self, mint, maxt, deltat, a, b, num_params, params=None, fix_params=None):
+  def __init__(self, mint, maxt, deltat, a, b, num_params, params=None, fix_params=None, create_params=True):
     self.num_params = num_params
-    self.params = []
-    for pidx in range(self.num_params):
-      # Randomly generate model parameters for those not provided
-      if params is None or params[pidx] is None:
-        self.params.append(tf.Variable(np.random.uniform()))
-      else:
-        self.params.append(tf.Variable(params[pidx], trainable=(fix_params is not None and not fix_params[pidx])))
+    if create_params:
+      self.params = []
+      for pidx in range(self.num_params):
+        # Randomly generate model parameters for those not provided
+        if params is None or params[pidx] is None:
+          self.params.append(tf.Variable(np.random.uniform()))
+        else:
+          self.params.append(tf.Variable(params[pidx], trainable=(fix_params is not None and not fix_params[pidx])))
+    else:
+      self.params = params
 
     #self.tvec = tf.range(mint,maxt,deltat)
     self.tvec = np.arange(mint,maxt,deltat)

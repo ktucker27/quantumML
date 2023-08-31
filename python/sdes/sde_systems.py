@@ -247,13 +247,24 @@ def wrap_rho_to_x(rho, pdim):
 
 class GeometricSDE:
     def a(t,x,p):
-        return p[0]*x
+        if tf.rank(p) == 1:
+            p = p[tf.newaxis,:]
+        return p[:,0,tf.newaxis,tf.newaxis]*x
 
     def b(t,x,p):
-        return p[1]*x
+        if tf.rank(p) == 1:
+            p = p[tf.newaxis,:]
+        return p[:,1,tf.newaxis,tf.newaxis]*x
 
     def bp(t,x,p):
-        return p[1]*tf.ones([tf.shape(x)[0],1,1,1])
+        if tf.rank(p) == 1:
+            p = p[tf.newaxis,:]
+        return p[:,1,tf.newaxis,tf.newaxis,tf.newaxis]*tf.ones([tf.shape(x)[0],1,1,1])
+
+    def bbtx(t,x,p):
+        if tf.rank(p) == 1:
+            p = p[tf.newaxis,:]
+        return 2.0*(p[:,1,tf.newaxis,tf.newaxis]**2.0)*x
 
 class Geometric2DSDE:
     def a(t,x,p):
@@ -308,7 +319,7 @@ class ZeroSDE:
         return tf.zeros(tf.shape(x), dtype=x.dtype)
 
     def b(t,x,p):
-        n = 2 # TODO - Remove hardcoded number of qubits
+        n = 1 # TODO - Remove hardcoded number of qubits
         return tf.zeros([tf.shape(x)[0],tf.shape(x)[1],n], dtype=x.dtype)
 
 class GenoisSDE:
@@ -518,12 +529,38 @@ class FlexSDE:
 
         return self.bf(t,x,p) + tf.complex(tf.cast(cell_out_real, tf.float64), tf.cast(cell_out_imag, tf.float64))[:,:,tf.newaxis]
 
+class RevSDE:
+    def __init__(self, eqns, a_model_real, a_model_imag):
+        self.eqns = eqns
+        self.a_model_real = a_model_real
+        self.a_model_imag = a_model_imag
+
+    def a(self,t,x,p):
+        xten_real = tf.math.real(x[:,:,0])
+        xten_imag = tf.math.imag(x[:,:,0])
+        tten = tf.cast(t, xten_real.dtype)*tf.ones([tf.shape(x)[0],1], xten_real.dtype)
+
+        model_out_real = self.a_model_real(tf.concat([tten,xten_real,tf.cast(p, xten_real.dtype)], axis=1))
+        if self.a_model_imag is not None:
+            model_out_imag = self.a_model_imag(tf.concat([tten,xten_imag,tf.cast(p, xten_imag.dtype)], axis=1))
+            model_out = tf.complex(model_out_real, model_out_imag)
+        else:
+            model_out = model_out_real
+
+        return -1.0*(self.eqns.a(t,x,p) - 0.0*0.5*self.eqns.bbtx(t,x,p) - \
+                     0.5*tf.matmul(self.eqns.b(t,x,p), tf.transpose(self.eqns.b(t,x,p), perm=(0,2,1)))*model_out[...,tf.newaxis])
+
+    def b(self,t,x,p):
+        return tf.zeros_like(self.eqns.b(t,x,p))
+
 class NNSDE:
-    def __init__(self, a_model_real, a_model_imag, b_model_real, b_model_imag, d, m, use_complex):
+    def __init__(self, a_model_real, a_model_imag, b_model_real, b_model_imag, a, b, d, m, use_complex):
         self.a_model_real = a_model_real
         self.a_model_imag = a_model_imag
         self.b_model_real = b_model_real
         self.b_model_imag = b_model_imag
+        self.af = a
+        self.bf = b
         self.d = d
         self.m = m
         self.use_complex = use_complex
@@ -535,12 +572,17 @@ class NNSDE:
         p - shape = [batch_size, num_params]
         return shape - [batch_size, d, 1]
         '''
+        if self.a_model_real is None:
+            return self.af(t,x,p)
+
         xten_real = tf.cast(tf.math.real(x[:,:,0]), tf.float32)
         xten_imag = tf.cast(tf.math.imag(x[:,:,0]), tf.float32)
         tten = t*tf.ones([tf.shape(x)[0],1], xten_real.dtype)
         real_part = self.a_model_real(tf.concat([tten,xten_real,tf.cast(p, xten_real.dtype)], axis=1))
+        real_part = tf.math.real(self.af(t,x,p)) + real_part
         if self.use_complex:
             imag_part = self.a_model_imag(tf.concat([tten,xten_imag,tf.cast(p, xten_real.dtype)], axis=1))
+            imag_part = tf.math.imag(self.af(t,x,p)) + imag_part
             return tf.complex(tf.cast(real_part, tf.float64), tf.cast(imag_part, tf.float64))[:,:,tf.newaxis]
 
         return tf.cast(real_part, tf.float64)[:,:,tf.newaxis]
@@ -552,17 +594,22 @@ class NNSDE:
         p - shape = [batch_size, num_params]
         return shape - [batch_size, d, m]
         '''
+        if self.b_model_real is None:
+            return self.bf(t,x,p)
+
         xten_real = tf.cast(tf.math.real(x[:,:,0]), tf.float32)
         xten_imag = tf.cast(tf.math.imag(x[:,:,0]), tf.float32)
         tten = t*tf.ones([tf.shape(x)[0],1], xten_real.dtype)
         real_part = self.b_model_real(tf.concat([tten,xten_real,tf.cast(p, xten_real.dtype)], axis=1))
         real_part = tf.reshape(real_part, [-1, self.d, self.m])
+        real_part = tf.math.real(self.bf(t,x,p)) + real_part
         if self.use_complex:
             imag_part = self.b_model_imag(tf.concat([tten,xten_imag,tf.cast(p, xten_real.dtype)], axis=1))
             imag_part = tf.reshape(imag_part, [-1, self.d, self.m])
+            imag_part = tf.math.imag(self.bf(t,x,p)) + imag_part
 
             return tf.complex(tf.cast(real_part, tf.float64), tf.cast(imag_part, tf.float64))
-        
+
         return tf.cast(real_part, tf.float64)
 
 class RabiWeakMeasSDE:
