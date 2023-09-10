@@ -319,7 +319,7 @@ class ZeroSDE:
         return tf.zeros(tf.shape(x), dtype=x.dtype)
 
     def b(t,x,p):
-        n = 1 # TODO - Remove hardcoded number of qubits
+        n = 2 # TODO - Remove hardcoded number of qubits
         return tf.zeros([tf.shape(x)[0],tf.shape(x)[1],n], dtype=x.dtype)
 
 class GenoisSDE:
@@ -530,30 +530,37 @@ class FlexSDE:
         return self.bf(t,x,p) + tf.complex(tf.cast(cell_out_real, tf.float64), tf.cast(cell_out_imag, tf.float64))[:,:,tf.newaxis]
 
 class RevSDE:
-    def __init__(self, eqns, a_model_real, a_model_imag):
+    def __init__(self, eqns, a_model_real, a_model_imag, tmax):
         self.eqns = eqns
         self.a_model_real = a_model_real
         self.a_model_imag = a_model_imag
+        self.tmax = tmax
 
     def a(self,t,x,p):
+        t = self.tmax - t
         xten_real = tf.math.real(x[:,:,0])
         xten_imag = tf.math.imag(x[:,:,0])
         tten = tf.cast(t, xten_real.dtype)*tf.ones([tf.shape(x)[0],1], xten_real.dtype)
 
+        a_out = self.eqns.a(t,x,p)
         model_out_real = self.a_model_real(tf.concat([tten,xten_real,tf.cast(p, xten_real.dtype)], axis=1))
         if self.a_model_imag is not None:
             model_out_imag = self.a_model_imag(tf.concat([tten,xten_imag,tf.cast(p, xten_imag.dtype)], axis=1))
             model_out = tf.complex(model_out_real, model_out_imag)
         else:
             model_out = model_out_real
+            a_out = tf.math.real(a_out)
 
-        #return -1.0*(self.eqns.a(t,x,p) - 0.5*self.eqns.bbtx(t,x,p) - \
+        #return -1.0*(a_out - 0.5*self.eqns.bbtx(t,x,p) - \
         #             0.5*tf.matmul(self.eqns.b(t,x,p), tf.transpose(self.eqns.b(t,x,p), perm=(0,2,1)))*model_out[...,tf.newaxis])
-        return -1.0*(self.eqns.a(t,x,p) - 0.0*0.5*self.eqns.bbtx(t,x,p) - \
+        return -1.0*(tf.cast(a_out, x.dtype) - \
                      0.5*tf.matmul(self.eqns.b(t,x,p), tf.transpose(self.eqns.b(t,x,p), perm=(0,2,1)))*model_out[...,tf.newaxis])
 
     def b(self,t,x,p):
-        return tf.zeros_like(self.eqns.b(t,x,p))
+        b_out = tf.zeros_like(self.eqns.b(t,x,p))
+        if self.a_model_imag is None:
+            return tf.math.real(b_out)
+        return b_out
 
 class NNSDE:
     def __init__(self, a_model_real, a_model_imag, b_model_real, b_model_imag, a, b, d, m, use_complex):
@@ -828,7 +835,7 @@ class RabiWeakMeasSDE:
         return liouv
 
 class RabiWeakMeasTrajSDE:
-    def __init__(self, rhovec, deltat, qidx, start_meas=0):
+    def __init__(self, rhovec, deltat, qidx, start_meas=0, rho_param_idx=-1):
         '''
         Equations for multi-qubit system voltage records
 
@@ -847,29 +854,53 @@ class RabiWeakMeasTrajSDE:
         self.deltat = deltat
         self.qidx = qidx
         self.start_meas = start_meas
+        self.rho_param_idx = rho_param_idx
+        if rho_param_idx >= 0:
+            self.epsend = self.epsend + 1
 
-    def get_rho(self, t):
-        tidx = np.rint(t/self.deltat).astype(int)
-        return self.rhovec[:,tidx,:,:]
+    def get_rho(self,t,p):
+        #tidx = np.rint(t/self.deltat).astype(int)
+        #return self.rhovec[:,tidx,:,:]
+        tidx = tf.cast(tf.math.round(t/self.deltat), tf.int32)
+        rho_out = tf.gather(self.rhovec, tidx, axis=1)
+        if self.rho_param_idx >= 0:
+            rho_out = tf.gather(rho_out, tf.cast(p[:,self.rho_param_idx], tf.int32), axis=0)
+        return rho_out
     
     def mia0(self,t,x,p_in):
         p = p_in
         if t < self.start_meas:
             p = p*tf.repeat(tf.constant([1,0,0,1,1,1,1], dtype=p.dtype), tf.shape(p)[0])
         
-        rho = self.get_rho(t)
+        rho = self.get_rho(t,p)
         _, _, sz = paulis()
         l = tf.cast(tf.pow(0.5*p[1],0.5)*np.array(sz), dtype=rho.dtype)
         return tf.cast(tf.pow(0.5*p[2],0.5), dtype=rho.dtype)*tf.reshape(tf.linalg.trace(tf.matmul(rho,2.0*l)), [-1,1,1])
 
+    def a(self,t,x,p_in):
+        if tf.rank(p_in) == 1:
+            p_in = p_in[tf.newaxis,:]
+        return self.mia(t,x,p_in)
+
+    def b(self,t,x,p_in):
+        if tf.rank(p_in) == 1:
+            p_in = p_in[tf.newaxis,:]
+        return self.mib(t,x,p_in)
+
+    def bbtx(self,t,x,p_in):
+        return tf.zeros(tf.shape(x), dtype=x.dtype)
+
     def mia(self,t,x,p_in):
         p = p_in
         if t < self.start_meas:
-            p = p*tf.repeat(tf.constant([1,0,0,1,1,1,1], dtype=p.dtype), tf.shape(p)[0])
+            if self.rho_param_idx >= 0:
+                p = p*tf.repeat(tf.constant([1,0,0,1,1,1,1,1], dtype=p.dtype), tf.shape(p)[0])
+            else:
+                p = p*tf.repeat(tf.constant([1,0,0,1,1,1,1], dtype=p.dtype), tf.shape(p)[0])
         
-        rho = self.get_rho(t)
         if tf.rank(p) == 1:
             p = p[tf.newaxis,:]
+        rho = self.get_rho(t,p)
 
         _, _, szj, sxj, syj = [2.0*sm for sm in operations.prod_ops(self.qidx, 2, self.n)]
         xyz_ten = tf.concat([sxj[tf.newaxis,...], syj[tf.newaxis,...], szj[tf.newaxis,...]], axis=0)

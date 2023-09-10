@@ -184,13 +184,13 @@ class SDERNNCell(tf.keras.layers.Layer):
   '''
 
   def __init__(self, a_model_real, a_model_imag, b_model_real, b_model_imag, output_dim, x0, maxt, deltat, d, m, params,
-               num_traj=1, use_complex=False, eqns=None, use_rev_sde=False, init_from_input=False, **kwargs):
+               num_traj=1, use_complex=False, eqns=None, use_rev_sde=False, init_from_input=False, tmax=0.0, input_param=[], **kwargs):
     self.x0 = x0
     self.maxt = maxt
     self.deltat = deltat
     self.num_traj = num_traj
     self.params = params
-    self.input_param = -1 # Restoring this will allow input to be used as a parameter
+    self.input_param = input_param
     self.use_complex = use_complex
     self.init_from_input = init_from_input
     self.d = d
@@ -206,7 +206,9 @@ class SDERNNCell(tf.keras.layers.Layer):
 
     # Setup the NN SDE functions
     if use_rev_sde:
-      self.nn_sde = sde_systems.RevSDE(eqns, self.a_model_real, self.a_model_imag)
+      if tmax == 0.0:
+        raise Exception('Must provide tmax > 0 when using reverse SDE')
+      self.nn_sde = sde_systems.RevSDE(eqns, self.a_model_real, self.a_model_imag, tmax)
     else:
       if eqns is None:
         a = sde_systems.ZeroSDE.a
@@ -241,12 +243,13 @@ class SDERNNCell(tf.keras.layers.Layer):
       if t == 0:
         x = tf.cast(inputs[:,:self.output_size], x.dtype)
 
-    if self.input_param >= 0:
+    if len(self.input_param) >= 0:
       for ii in range(self.params.shape[0]):
-        if ii == self.input_param:
-          param_inputs = inputs + 1.0e-8
+        if ii in self.input_param:
+          param_idx = self.input_param.index(ii)
+          param_inputs = inputs[:,(self.output_size+param_idx):(self.output_size+param_idx+1)]
         else:
-          param_inputs = self.params[ii]*tf.ones(tf.shape(inputs), dtype=inputs.dtype)
+          param_inputs = self.params[ii]*tf.ones([tf.shape(inputs)[0],1], dtype=inputs.dtype)
         
         if ii == 0:
           traj_inputs = param_inputs
@@ -255,7 +258,7 @@ class SDERNNCell(tf.keras.layers.Layer):
     else:
       traj_inputs = tf.tile(self.params[tf.newaxis,:], multiples=[tf.shape(inputs)[0],1])
     
-    traj_inputs = tf.concat([tf.cast(inputs, traj_inputs.dtype), traj_inputs], axis=1)
+    traj_inputs = tf.concat([tf.cast(inputs[:,:self.output_size], traj_inputs.dtype), traj_inputs], axis=1)
 
     # Tile the input based on the number of desired trajectories
     traj_inputs = tf.tile(traj_inputs, multiples=[self.num_traj,1])
