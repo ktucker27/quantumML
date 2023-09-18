@@ -184,7 +184,8 @@ class SDERNNCell(tf.keras.layers.Layer):
   '''
 
   def __init__(self, a_model_real, a_model_imag, b_model_real, b_model_imag, output_dim, x0, maxt, deltat, d, m, params,
-               num_traj=1, use_complex=False, eqns=None, use_rev_sde=False, init_from_input=False, tmax=0.0, input_param=[], **kwargs):
+               num_traj=1, use_complex=False, eqns=None, use_rev_sde=False, init_from_input=False, tmax=0.0, input_param=[],
+               num_params=-1, **kwargs):
     self.x0 = x0
     self.maxt = maxt
     self.deltat = deltat
@@ -206,9 +207,9 @@ class SDERNNCell(tf.keras.layers.Layer):
 
     # Setup the NN SDE functions
     if use_rev_sde:
-      if tmax == 0.0:
-        raise Exception('Must provide tmax > 0 when using reverse SDE')
-      self.nn_sde = sde_systems.RevSDE(eqns, self.a_model_real, self.a_model_imag, tmax)
+      if tmax == 0.0 or num_params < 0:
+        raise Exception('Must provide tmax and num_params > 0 when using reverse SDE')
+      self.nn_sde = sde_systems.RevSDE(eqns, self.a_model_real, self.a_model_imag, tmax - deltat, num_params)
     else:
       if eqns is None:
         a = sde_systems.ZeroSDE.a

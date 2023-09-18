@@ -530,11 +530,12 @@ class FlexSDE:
         return self.bf(t,x,p) + tf.complex(tf.cast(cell_out_real, tf.float64), tf.cast(cell_out_imag, tf.float64))[:,:,tf.newaxis]
 
 class RevSDE:
-    def __init__(self, eqns, a_model_real, a_model_imag, tmax):
+    def __init__(self, eqns, a_model_real, a_model_imag, tmax, num_params):
         self.eqns = eqns
         self.a_model_real = a_model_real
         self.a_model_imag = a_model_imag
         self.tmax = tmax
+        self.num_params = num_params
 
     def a(self,t,x,p):
         t = self.tmax - t
@@ -543,9 +544,9 @@ class RevSDE:
         tten = tf.cast(t, xten_real.dtype)*tf.ones([tf.shape(x)[0],1], xten_real.dtype)
 
         a_out = self.eqns.a(t,x,p)
-        model_out_real = self.a_model_real(tf.concat([tten,xten_real,tf.cast(p, xten_real.dtype)], axis=1))
+        model_out_real = self.a_model_real(tf.concat([tten,xten_real,tf.cast(p[:,:self.num_params], xten_real.dtype)], axis=1))
         if self.a_model_imag is not None:
-            model_out_imag = self.a_model_imag(tf.concat([tten,xten_imag,tf.cast(p, xten_imag.dtype)], axis=1))
+            model_out_imag = self.a_model_imag(tf.concat([tten,xten_imag,tf.cast(p[:,:self.num_params], xten_imag.dtype)], axis=1))
             model_out = tf.complex(model_out_real, model_out_imag)
         else:
             model_out = model_out_real
