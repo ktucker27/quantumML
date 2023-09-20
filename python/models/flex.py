@@ -19,7 +19,7 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
   '''
 
   def __init__(self, a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag, rho0,
-               maxt, deltat, params, num_traj=1, input_param=0, comp_iq=False, sim_noise=False,
+               maxt, deltat, params, num_traj=1, input_param=[0], comp_iq=False, sim_noise=False,
                start_meas=0, meas_param=-1, num_meas=1, **kwargs):
     self.rho0 = tf.reshape(rho0, [-1])
     self.maxt = maxt
@@ -125,8 +125,9 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
       p_t = self.pre_meas_params
 
     for ii in range(self.params.shape[0]):
-      if ii == self.input_param:
-        param_inputs = inputs[:,:1] + 1.0e-8
+      if ii in self.input_param:
+        param_idx = self.input_param.index(ii)
+        param_inputs = inputs[:,param_idx:param_idx+1] + 1.0e-8
       else:
         param_inputs = tf.cast(p_t[ii], inputs.dtype)*tf.ones(tf.shape(inputs[:,:1]), dtype=inputs.dtype)
 
@@ -156,7 +157,7 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
       ivec_traj = tf.reshape(tf.math.real(ivec), [self.num_traj,-1,tf.shape(ivec)[1]])
       ivec_mean = tf.reduce_mean(ivec_traj, axis=0)
       ivec_std = tf.math.reduce_std(ivec_traj, axis=0)
-      ivec_out = tf.concat([ivec_mean[...,tf.newaxis], ivec_std[...,tf.newaxis], tf.cast(tf.tile(inputs[:,:1], multiples=[1,2])[:,:,tf.newaxis], dtype=tf.float64)], axis=-1)
+      ivec_out = tf.concat([ivec_mean[...,tf.newaxis], ivec_std[...,tf.newaxis], tf.cast(tf.tile(inputs[:,tf.newaxis,:], multiples=[1,2,1]), dtype=tf.float64)], axis=-1)
       return ivec_out, [rhovecs, ivec, t]
 
     # Average over trajectories
@@ -177,7 +178,7 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     #mask = tf.math.logical_not(tf.math.is_nan(tf.reduce_max(tf.math.real(probs), axis=[1])))
     #probs = tf.boolean_mask(probs, mask)
 
-    return tf.concat((probs, tf.cast(inputs[:,:1], dtype=tf.float64)), axis=1), [rhovecs, ivec, t]
+    return tf.concat((probs, tf.cast(inputs[:,:], dtype=tf.float64)), axis=1), [rhovecs, ivec, t]
 
 class SDERNNCell(tf.keras.layers.Layer):
   ''' An RNN cell for taking a single Euler step with neural network drift and diffusion functions
@@ -286,14 +287,14 @@ def build_flex_model(seq_len, lstm_size, rho0, params, deltat):
 
   model.add(tf.keras.layers.RNN(EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
                                                  maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
-                                                 num_traj=20, input_param=3),
+                                                 num_traj=20, input_param=[3]),
                                 stateful=False,
                                 return_sequences=True,
                                 name='physical_layer'))
   
   return model
 
-def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, lstm_size, num_params, rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False, meas_op=2):
+def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, lstm_size, num_params, rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False, meas_op=2, input_params=[3]):
   num_meas = 3
   params = np.concatenate([params, tf.one_hot([meas_op], depth=num_meas)[0,:].numpy()])
 
@@ -327,7 +328,8 @@ def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes,
 
   model.add(tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: fusion.max_activation_mean0(x, max_val=12, xscale=100.0)))
 
-  model.add(tf.keras.layers.RepeatVector(seq_len, input_shape=[1]))
+  assert(num_params == len(input_params))
+  model.add(tf.keras.layers.RepeatVector(seq_len, input_shape=[num_params]))
 
   # Add the physical RNN layer
   a_rnn_cell_real = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
@@ -337,7 +339,7 @@ def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes,
 
   model.add(tf.keras.layers.RNN(EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
                                                  maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
-                                                 num_traj=num_traj, input_param=3, start_meas=start_meas, comp_iq=comp_iq,
+                                                 num_traj=num_traj, input_param=input_params, start_meas=start_meas, comp_iq=comp_iq,
                                                  num_meas=num_meas),
                                 stateful=False,
                                 return_sequences=True,
@@ -418,7 +420,7 @@ def build_multimeas_flex_model(seq_len, num_features, grp_size, avg_size, conv_s
 
   return tf.keras.Model(input_layer, output, name='encoder')
 
-def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lstm_size, dec_lstm_size, td_sizes, encoder_sizes, num_params, rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False):
+def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lstm_size, dec_lstm_size, td_sizes, encoder_sizes, num_params, rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False, input_params=[3]):
   input_layer = tf.keras.layers.Input(shape=(seq_len, num_features+1, num_meas))
   x = input_layer
   meas_params = tf.cast(tf.one_hot(tf.cast(x[:,-1,-1,:], tf.int32), depth=3), x.dtype)
@@ -450,6 +452,7 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lst
   for size in encoder_sizes:
     x = tf.keras.layers.Dense(size, activation='relu')(x)
 
+  assert(num_params == len(input_params))
   x = tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: fusion.max_activation_mean0(x, max_val=12, xscale=100.0))(x)
   #x = tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: fusion.max_activation_mean0(x, max_val=6, xscale=100.0))(x)
   #x = tf.keras.layers.Lambda(lambda x: x + 1)(x)
@@ -466,7 +469,7 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lst
 
   dec_rnn_layer = tf.keras.layers.RNN(EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
                                                        maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
-                                                       num_traj=num_traj, input_param=3, start_meas=start_meas, comp_iq=comp_iq,
+                                                       num_traj=num_traj, input_param=input_params, start_meas=start_meas, comp_iq=comp_iq,
                                                        meas_param=num_params, num_meas=num_meas),
                                       stateful=False,
                                       return_sequences=True,
@@ -483,7 +486,9 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lst
   x = dec_rnn_layer(x)
 
   # Split the measurement types back out from the batch index
-  output = tf.transpose(tf.reshape(x, [-1,num_meas,seq_len,num_features,3]), perm=[0,2,3,4,1])
+  # The first num_params+2 elements of the final index include mean, std, and then the input params prior to
+  # the concatenated meas params
+  output = tf.transpose(tf.reshape(x[...,:num_params+2], [-1,num_meas,seq_len,num_features,num_params+2]), perm=[0,2,3,4,1])
 
   return tf.keras.Model(input_layer, output, name='encoder')
 

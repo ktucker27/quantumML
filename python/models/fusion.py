@@ -381,7 +381,7 @@ def fusion_mse_loss_voltage_zz(y_true, y_pred):
 
 def fusion_mse_loss_voltage_xyz(y_true, y_pred):
     # Evaluate the loss for each sample
-    y_true_ro_results = tf.cast(y_true, tf.float32)[:,1:,:2,:3]
+    y_true_ro_results = tf.cast(y_true, tf.float32)[:,1:,:2,:3,0]
     y_pred_ro_results = tf.cast(y_pred, tf.float32)[:,:-1,:,0,:3]
 
     return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true_ro_results, y_pred_ro_results))
@@ -444,10 +444,11 @@ def param_metric(y_true, y_pred):
     return tf.sqrt(tf.keras.metrics.mean_squared_error(y_true[:,-1,-1], y_pred[:,-1,-1]))
 
 def param_metric_volt(y_true, y_pred):
-    return tf.sqrt(tf.keras.metrics.mean_squared_error(y_true[:,-1,0,-1], y_pred[:,-1,0,-1]))
+    # Parameters are appended after the voltage mean and standard deviation, so start at index 2
+    return tf.sqrt(tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true[:,-1,0,2:], y_pred[:,-1,0,2:])))
 
 def param_metric_volt_xyz(y_true, y_pred):
-    return tf.sqrt(tf.keras.metrics.mean_squared_error(y_true[:,-1,0,-1], y_pred[:,-1,0,-1,0]))
+    return tf.sqrt(tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true[:,-1,0,0,1:], y_pred[:,-1,0,2:,0])))
 
 def param_loss(y_true, y_pred):
     return tf.keras.metrics.mean_squared_error(y_true[:,0], y_pred[:,0])
