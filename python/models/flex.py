@@ -294,7 +294,9 @@ def build_flex_model(seq_len, lstm_size, rho0, params, deltat):
   
   return model
 
-def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, lstm_size, num_params, rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False, meas_op=2, input_params=[3]):
+def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, lstm_size, num_params,
+                          rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False, meas_op=2, input_params=[3],
+                          max_val=12, offset=0.0):
   num_meas = 3
   params = np.concatenate([params, tf.one_hot([meas_op], depth=num_meas)[0,:].numpy()])
 
@@ -326,7 +328,8 @@ def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes,
   for size in encoder_sizes:
     model.add(tf.keras.layers.Dense(size, activation='relu'))
 
-  model.add(tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: fusion.max_activation_mean0(x, max_val=12, xscale=100.0)))
+  model.add(tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: fusion.max_activation_mean0(x, max_val=max_val, xscale=100.0, offset=offset)))
+  #model.add(tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: fusion.linear_activation_scaled(x, xscale=100.0)))
 
   assert(num_params == len(input_params))
   model.add(tf.keras.layers.RepeatVector(seq_len, input_shape=[num_params]))
@@ -420,7 +423,9 @@ def build_multimeas_flex_model(seq_len, num_features, grp_size, avg_size, conv_s
 
   return tf.keras.Model(input_layer, output, name='encoder')
 
-def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lstm_size, dec_lstm_size, td_sizes, encoder_sizes, num_params, rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False, input_params=[3]):
+def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lstm_size, dec_lstm_size, td_sizes, encoder_sizes, num_params,
+                              rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False, input_params=[3],
+                              max_val=12, offset=0.0):
   input_layer = tf.keras.layers.Input(shape=(seq_len, num_features+1, num_meas))
   x = input_layer
   meas_params = tf.cast(tf.one_hot(tf.cast(x[:,-1,-1,:], tf.int32), depth=3), x.dtype)
@@ -453,7 +458,7 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lst
     x = tf.keras.layers.Dense(size, activation='relu')(x)
 
   assert(num_params == len(input_params))
-  x = tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: fusion.max_activation_mean0(x, max_val=12, xscale=100.0))(x)
+  x = tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: fusion.max_activation_mean0(x, max_val=max_val, xscale=100.0, offset=offset))(x)
   #x = tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: fusion.max_activation_mean0(x, max_val=6, xscale=100.0))(x)
   #x = tf.keras.layers.Lambda(lambda x: x + 1)(x)
 

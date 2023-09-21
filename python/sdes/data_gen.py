@@ -10,19 +10,35 @@ sys.path.append(os.path.join(parent, 'models'))
 
 import fusion
 
-def gen_noise_free(epsilons, mint, maxt, deltat, stride, start_meas=0, meas_op=2):
+def gen_noise_free(all_params, mint, maxt, deltat, stride, start_meas=0, meas_op=2, input_params=[3], init_ops=[2,2]):
     omega = 1.395
     kappa = 0.83156
     eta = 0.1469
+    eps = 0.1
 
-    num_traj = epsilons.shape[0]
-    params = np.array([omega,2.0*kappa,eta], dtype=np.float32)
+    if len(all_params.shape) == 1:
+      all_params = all_params[:,tf.newaxis]
+
+    num_traj = all_params.shape[0]
+    params = np.array([omega,2.0*kappa,eta,eps], dtype=np.float32)
+    for ii in range(params.shape[0]):
+      if ii in input_params:
+        param_idx = input_params.index(ii)
+        param_inputs = all_params[:,param_idx:param_idx+1]
+      else:
+        param_inputs = params[ii]*np.ones_like(all_params[:,:1])
+      
+      if ii == 0:
+        traj_inputs = param_inputs
+      else:
+        traj_inputs = tf.concat([traj_inputs, param_inputs], axis=1)
     
-    traj_inputs = tf.tile(params[tf.newaxis,:], multiples=[num_traj,1])
-    traj_inputs = tf.concat([traj_inputs, epsilons[:,tf.newaxis], tf.one_hot([meas_op], depth=3)*tf.ones([num_traj,3], tf.float32)], axis=1)
+    traj_inputs = tf.concat([tf.cast(traj_inputs, tf.float32), tf.one_hot([meas_op], depth=3)*tf.ones([num_traj,3], tf.float32)], axis=1)
 
-    sx, sy, sz = sde_systems.paulis()
-    rho0 = sde_systems.get_init_rho(sz, sz, 0, 0)[tf.newaxis,...]
+    all_ops = sde_systems.paulis()
+    rho0 = sde_systems.get_init_rho(all_ops[init_ops[0]], all_ops[init_ops[1]], 0, 0)[tf.newaxis,...]
+    pauli_names = ['X', 'Y', 'Z']
+    print(f'Initial state: {pauli_names[init_ops[0]]}{pauli_names[init_ops[1]]}00')
 
     rhovec, ivec, _, _ = fusion.run_model_2d(rho0, traj_inputs, num_traj, mint=mint, maxt=maxt, deltat=deltat, sim_noise=False, start_meas=start_meas)
     probs = sde_systems.get_2d_probs(rhovec)
