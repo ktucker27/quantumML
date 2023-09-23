@@ -521,7 +521,7 @@ def build_datagen_model(seq_len, num_features, rho0, num_params, params, deltat,
 
   rnn_layer = tf.keras.layers.RNN(EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
                                                    maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
-                                                   num_traj=num_traj, input_param=3, start_meas=start_meas, comp_iq=comp_iq,
+                                                   num_traj=num_traj, input_param=[3], start_meas=start_meas, comp_iq=comp_iq,
                                                    sim_noise=sim_noise, meas_param=num_params, num_meas=num_meas),
                                 stateful=False,
                                 return_sequences=True,
@@ -538,6 +538,8 @@ def build_datagen_model(seq_len, num_features, rho0, num_params, params, deltat,
   x = rnn_layer(x)
 
   # Split the measurement types back out from the batch index
-  output = tf.transpose(tf.reshape(x, [-1,num_meas,seq_len,num_features,3]), perm=[0,2,3,4,1])
+  # The first num_params+2 elements of the final index include mean, std, and then the input params prior to
+  # the concatenated meas params
+  output = tf.transpose(tf.reshape(x[...,:num_params+2], [-1,num_meas,seq_len,num_features,num_params+2]), perm=[0,2,3,4,1])
 
   return tf.keras.Model(input_layer, output, name='data_gen_model')
