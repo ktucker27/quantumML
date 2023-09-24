@@ -119,7 +119,7 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     '''
     Output:
     output_tensor, states where
-    if self.compiq:
+    if self.comp_iq:
       output_tensor - [batch_size*num_traj, m, 2 + input_dim] - Second index gives the feature (qubit and value),
                       third index is (mean, stddev, [input_params])
     else:
