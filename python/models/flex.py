@@ -116,6 +116,20 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     return rhovec, ivec
 
   def call(self, inputs, states):
+    '''
+    Output:
+    output_tensor, states where
+    if self.compiq:
+      output_tensor - [batch_size*num_traj, m, 2 + input_dim] - Second index gives the feature (qubit and value),
+                      third index is (mean, stddev, [input_params])
+    else:
+      output_tensor - [batch_size*num_traj, num_probs + input_dim] - Second index includes all strong measurement
+                      probabilities followed by input parameters
+    states -  [rhovecs, ivec, t] where
+    rhovecs - [batch_size*num_traj, pdim, pdim] density operator at the output time
+    ivec -    [batch_size*num_traj, m] voltage values at the output time
+    t -       scalar output time
+    '''
     rho = states[0]
     ivec = states[1]
     t = states[2]
