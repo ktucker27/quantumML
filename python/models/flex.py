@@ -20,7 +20,7 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
 
   def __init__(self, a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag, rho0,
                maxt, deltat, params, num_traj=1, input_param=[0], comp_iq=False, sim_noise=False,
-               start_meas=0, meas_param=-1, num_meas=1, **kwargs):
+               start_meas=0, meas_param=-1, num_meas=1, strong_probs=[], project_rho=True, **kwargs):
     self.rho0 = tf.reshape(rho0, [-1])
     self.maxt = maxt
     self.deltat = deltat
@@ -31,6 +31,8 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     self.comp_iq = comp_iq
     self.sim_noise = sim_noise
     self.start_meas = start_meas
+    self.strong_probs = strong_probs
+    self.project_rho = project_rho
     self.pdim = 4 # TODO - Remove hard-coded dimension
     self.m = 2
 
@@ -87,7 +89,8 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     if self.comp_iq:
       # Project onto the space of physical states before computing voltages (the initial state shouldn't need a projection so leave it out)
       rhovec_proj = tf.reshape(rhovec[:,1:,:,:], [-1,self.pdim,self.pdim])
-      rhovec_proj = tf.map_fn(lambda x: sde_systems.project_to_rho(x, self.pdim), rhovec_proj/tf.linalg.trace(rhovec_proj)[:,tf.newaxis,tf.newaxis])
+      if self.project_rho:
+        rhovec_proj = tf.map_fn(lambda x: sde_systems.project_to_rho(x, self.pdim), rhovec_proj/tf.linalg.trace(rhovec_proj)[:,tf.newaxis,tf.newaxis])
       rhovec_proj = tf.reshape(rhovec_proj, [-1,tf.shape(rhovec)[1]-1,self.pdim,self.pdim])
       rhovec = tf.concat([rhovec[:,:1,:,:], rhovec_proj], axis=1)
 
@@ -120,8 +123,8 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     Output:
     output_tensor, states where
     if self.comp_iq:
-      output_tensor - [batch_size*num_traj, m, 2 + input_dim] - Second index gives the feature (qubit and value),
-                      third index is (mean, stddev, [input_params])
+      output_tensor - [batch_size*num_traj, m, 2 + len(self.strong_probs) + input_dim] - Second index gives the
+                      feature (qubit and value), third index is (mean, stddev, [strong_probs], [input_params])
     else:
       output_tensor - [batch_size*num_traj, num_probs + input_dim] - Second index includes all strong measurement
                       probabilities followed by input parameters
@@ -166,25 +169,33 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
 
     t = t + self.deltat
 
+    # Compute strong measurement probabilities if needed
+    if not self.comp_iq or len(self.strong_probs) > 0:
+      # Average over trajectories
+      rhovecs_avg = tf.reduce_mean(tf.reshape(rhovecs, [self.num_traj,-1,tf.shape(rhovecs)[1],tf.shape(rhovecs)[2]]), axis=0)
+
+      # Project onto the space of physical states
+      if self.project_rho:
+        rhovecs_avg = tf.map_fn(lambda x: sde_systems.project_to_rho(x, self.pdim), rhovecs_avg/tf.linalg.trace(rhovecs_avg)[:,tf.newaxis,tf.newaxis])
+
+      if self.num_traj == 1:
+        rhovecs = rhovecs_avg
+
+      # Calculate probabilities
+      probs = tf.math.real(sde_systems.get_2d_probs(rhovecs_avg[:,tf.newaxis,:,:])[:,-1,:])
+
     # If what we want is voltage records, then we're done
     if self.comp_iq:
       ivec_traj = tf.reshape(tf.math.real(ivec), [self.num_traj,-1,tf.shape(ivec)[1]])
       ivec_mean = tf.reduce_mean(ivec_traj, axis=0)
       ivec_std = tf.math.reduce_std(ivec_traj, axis=0)
-      ivec_out = tf.concat([ivec_mean[...,tf.newaxis], ivec_std[...,tf.newaxis], tf.cast(tf.tile(inputs[:,tf.newaxis,:], multiples=[1,2,1]), dtype=tf.float64)], axis=-1)
+      if len(self.strong_probs) > 0:
+        ivec_out = tf.concat([ivec_mean[...,tf.newaxis], ivec_std[...,tf.newaxis], tf.tile(tf.gather(probs, self.strong_probs, axis=1)[:,tf.newaxis,:], multiples=[1,2,1]), tf.cast(tf.tile(inputs[:,tf.newaxis,:], multiples=[1,2,1]), dtype=tf.float64)], axis=-1)
+      else:
+        ivec_out = tf.concat([ivec_mean[...,tf.newaxis], ivec_std[...,tf.newaxis], tf.cast(tf.tile(inputs[:,tf.newaxis,:], multiples=[1,2,1]), dtype=tf.float64)], axis=-1)
       return ivec_out, [rhovecs, ivec, t]
 
-    # Average over trajectories
-    rhovecs_avg = tf.reduce_mean(tf.reshape(rhovecs, [self.num_traj,-1,tf.shape(rhovecs)[1],tf.shape(rhovecs)[2]]), axis=0)
-
-    # Project onto the space of physical states
-    rhovecs_avg = tf.map_fn(lambda x: sde_systems.project_to_rho(x, self.pdim), rhovecs_avg/tf.linalg.trace(rhovecs_avg)[:,tf.newaxis,tf.newaxis])
-
-    if self.num_traj == 1:
-      rhovecs = rhovecs_avg
-
-    # Calculate probabilities
-    probs = tf.math.real(sde_systems.get_2d_probs(rhovecs_avg[:,tf.newaxis,:,:])[:,-1,:])
+    
     #probs = tf.math.maximum(probs,0)
     #probs = tf.math.minimum(probs,1.0)
 
@@ -310,7 +321,7 @@ def build_flex_model(seq_len, lstm_size, rho0, params, deltat):
 
 def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, lstm_size, num_params,
                           rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False, meas_op=2, input_params=[3],
-                          max_val=12, offset=0.0):
+                          max_val=12, offset=0.0, strong_probs=[], project_rho=True):
   num_meas = 3
   params = np.concatenate([params, tf.one_hot([meas_op], depth=num_meas)[0,:].numpy()])
 
@@ -357,7 +368,7 @@ def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes,
   model.add(tf.keras.layers.RNN(EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
                                                  maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
                                                  num_traj=num_traj, input_param=input_params, start_meas=start_meas, comp_iq=comp_iq,
-                                                 num_meas=num_meas),
+                                                 num_meas=num_meas, strong_probs=strong_probs, project_rho=project_rho),
                                 stateful=False,
                                 return_sequences=True,
                                 name='physical_layer'))
@@ -372,7 +383,9 @@ def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes,
 
   return model
 
-def build_multimeas_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, lstm_size, num_params, rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False):
+def build_multimeas_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, lstm_size,
+                               num_params, rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False,
+                               strong_probs=[], project_rho=True):
   num_meas = 3
   input_layer = tf.keras.layers.Input(shape=(seq_len, num_features+1, grp_size))
   x = input_layer
@@ -420,7 +433,8 @@ def build_multimeas_flex_model(seq_len, num_features, grp_size, avg_size, conv_s
   rnn_layer = tf.keras.layers.RNN(EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
                                                    maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
                                                    num_traj=num_traj, input_param=3, start_meas=start_meas, comp_iq=comp_iq,
-                                                   meas_param=num_params, num_meas=num_meas),
+                                                   meas_param=num_params, num_meas=num_meas, strong_probs=strong_probs,
+                                                   project_rho=project_rho),
                                 stateful=False,
                                 return_sequences=True,
                                 name='physical_layer')
@@ -439,7 +453,7 @@ def build_multimeas_flex_model(seq_len, num_features, grp_size, avg_size, conv_s
 
 def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lstm_size, dec_lstm_size, td_sizes, encoder_sizes, num_params,
                               rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False, input_params=[3],
-                              max_val=12, offset=0.0):
+                              max_val=12, offset=0.0, strong_probs=[], project_rho=True):
   input_layer = tf.keras.layers.Input(shape=(seq_len, num_features+1, num_meas))
   x = input_layer
   meas_params = tf.cast(tf.one_hot(tf.cast(x[:,-1,-1,:], tf.int32), depth=3), x.dtype)
@@ -489,7 +503,8 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lst
   dec_rnn_layer = tf.keras.layers.RNN(EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
                                                        maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
                                                        num_traj=num_traj, input_param=input_params, start_meas=start_meas, comp_iq=comp_iq,
-                                                       meas_param=num_params, num_meas=num_meas),
+                                                       meas_param=num_params, num_meas=num_meas, strong_probs=strong_probs,
+                                                       project_rho=project_rho),
                                       stateful=False,
                                       return_sequences=True,
                                       name='physical_layer')
@@ -505,9 +520,10 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lst
   x = dec_rnn_layer(x)
 
   # Split the measurement types back out from the batch index
-  # The first num_params+2 elements of the final index include mean, std, and then the input params prior to
-  # the concatenated meas params
-  output = tf.transpose(tf.reshape(x[...,:num_params+2], [-1,num_meas,seq_len,num_features,num_params+2]), perm=[0,2,3,4,1])
+  # The first num_params+2 elements of the final index include mean, std, strong measurement probabilities, and
+  # then the input params prior to the concatenated meas params
+  num_out = 2 + len(strong_probs) + num_params
+  output = tf.transpose(tf.reshape(x[...,:num_out], [-1,num_meas,seq_len,num_features,num_out]), perm=[0,2,3,4,1])
 
   return tf.keras.Model(input_layer, output, name='encoder')
 
@@ -536,7 +552,8 @@ def build_datagen_model(seq_len, num_features, rho0, num_params, params, deltat,
   rnn_layer = tf.keras.layers.RNN(EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
                                                    maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
                                                    num_traj=num_traj, input_param=[3], start_meas=start_meas, comp_iq=comp_iq,
-                                                   sim_noise=sim_noise, meas_param=num_params, num_meas=num_meas),
+                                                   sim_noise=sim_noise, meas_param=num_params, num_meas=num_meas,
+                                                   project_rho=False),
                                 stateful=False,
                                 return_sequences=True,
                                 name='physical_layer')
