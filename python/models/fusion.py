@@ -381,10 +381,30 @@ def fusion_mse_loss_voltage_zz(y_true, y_pred):
 
 def fusion_mse_loss_voltage_xyz(y_true, y_pred):
     # Evaluate the loss for each sample
-    y_true_ro_results = tf.cast(y_true, tf.float32)[:,1:,:2,:3,0]
-    y_pred_ro_results = tf.cast(y_pred, tf.float32)[:,:-1,:,0,:3]
+    y_true_ro_results = tf.cast(y_true, tf.float32)[:,1:,:2,:,0]
+    y_pred_ro_results = tf.cast(y_pred, tf.float32)[:,:-1,:,0,:]
 
     return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true_ro_results, y_pred_ro_results))
+
+def fusion_mse_loss_weakstrong(y_true, y_pred, num_strong_probs):
+    '''
+    y_true - [traj,time,(qubit0,qubit1,meas_num),meas_idx,(volt,[strong_probs],[true_params])]
+    y_pred - [traj,time,qubit,(mean,std,[strong_probs],[input_params]),meas_idx]
+    '''
+    # Evaluate the loss for each sample
+    indices = [0]
+    indices += range(2,2+num_strong_probs)
+    y_true_ro_results = tf.cast(y_true, tf.float32)[:,1:,:2,:,0]
+    y_pred_ro_results = tf.cast(y_pred, tf.float32)[:,:-1,:,0,:]
+    weak_loss = tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true_ro_results, y_pred_ro_results))
+
+    strong_true = tf.cast(y_true, tf.float32)[:,-1,:2,:,1:1+num_strong_probs]
+    strong_pred = tf.transpose(tf.cast(y_pred, tf.float32)[:,-1,:,2:2+num_strong_probs,:], perm=[0,1,3,2])
+    strong_loss = tf.reduce_mean(tf.square(strong_true - strong_pred))
+
+    strong_weight = 1.0
+
+    return weak_loss + strong_weight*strong_loss
 
 def build_fusion_model(grp_size, seq_len, num_features, lstm_size, num_params):
     model = tf.keras.Sequential()
@@ -449,6 +469,13 @@ def param_metric_volt(y_true, y_pred):
 
 def param_metric_volt_xyz(y_true, y_pred):
     return tf.sqrt(tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true[:,-1,0,0,1:], y_pred[:,-1,0,2:,0])))
+
+def param_metric_weakstrong(y_true, y_pred, num_strong_probs):
+    '''
+    y_true - [traj,time,(qubit0,qubit1,meas_num),meas_idx,(volt,[strong_probs],[true_params])]
+    y_pred - [traj,time,qubit,(mean,std,[strong_probs],[input_params]),meas_idx]
+    '''
+    return tf.sqrt(tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true[:,-1,0,0,(1+num_strong_probs):], y_pred[:,-1,0,(2+num_strong_probs):,0])))
 
 def param_loss(y_true, y_pred):
     return tf.keras.metrics.mean_squared_error(y_true[:,0], y_pred[:,0])

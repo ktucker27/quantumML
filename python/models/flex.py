@@ -453,9 +453,30 @@ def build_multimeas_flex_model(seq_len, num_features, grp_size, avg_size, conv_s
 
 def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lstm_size, dec_lstm_size, td_sizes, encoder_sizes, num_params,
                               rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False, input_params=[3],
-                              max_val=12, offset=0.0, strong_probs=[], project_rho=True):
-  input_layer = tf.keras.layers.Input(shape=(seq_len, num_features+1, num_meas))
-  x = input_layer
+                              max_val=12, offset=0.0, strong_probs=[], project_rho=True, strong_probs_input=False):
+  '''
+  Input:
+    input_tensor - [traj, time, (qubit0,qubit1,meas_num), meas_idx, (volt,[strong_probs])]
+  Output:
+    if comp_iq:
+      output_tensor - [traj, time, m, 2 + len(self.strong_probs) + input_dim] - Second index gives the
+                      feature (qubit and value), third index is (mean, stddev, [strong_probs], [input_params])
+    else:
+      output_tensor - [traj, time, num_probs + input_dim] - Second index includes all strong measurement
+                      probabilities followed by input parameters
+  '''
+  num_strong_probs = len(strong_probs)
+  num_features_in = num_features
+  if num_strong_probs == 0 or not strong_probs_input:
+    input_layer = tf.keras.layers.Input(shape=(seq_len, num_features+1, num_meas))
+    x = input_layer
+  else:
+    # Add strong probability estimates as additional features
+    input_layer = tf.keras.layers.Input(shape=(seq_len, num_features+1, num_meas, 1+num_strong_probs))
+    strong_prob_vals = input_layer[:,-1,-1,-1,1:]
+    x = tf.concat([input_layer[:,:,:num_features,:,0], tf.ones_like(input_layer[:,:,:1,:,0])*strong_prob_vals[:,tf.newaxis,:,tf.newaxis], input_layer[:,:,num_features:,:,0]], axis=2)
+    num_features += num_strong_probs
+    #x = input_layer[...,0]
   meas_params = tf.cast(tf.one_hot(tf.cast(x[:,-1,-1,:], tf.int32), depth=3), x.dtype)
   meas_params = tf.reshape(meas_params, [-1,3]) # shape = [batch_size*num_meas,3]
 
@@ -484,6 +505,8 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lst
 
   for size in encoder_sizes:
     x = tf.keras.layers.Dense(size, activation='relu')(x)
+
+  #x = tf.concat([x, strong_prob_vals], axis=1)
 
   assert(num_params == len(input_params))
   x = tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: fusion.max_activation_mean0(x, max_val=max_val, xscale=100.0, offset=offset))(x)
@@ -522,12 +545,13 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lst
   # Split the measurement types back out from the batch index
   # The first num_params+2 elements of the final index include mean, std, strong measurement probabilities, and
   # then the input params prior to the concatenated meas params
-  num_out = 2 + len(strong_probs) + num_params
-  output = tf.transpose(tf.reshape(x[...,:num_out], [-1,num_meas,seq_len,num_features,num_out]), perm=[0,2,3,4,1])
+  num_out = 2 + num_strong_probs + num_params
+  output = tf.transpose(tf.reshape(x[...,:num_out], [-1,num_meas,seq_len,num_features_in,num_out]), perm=[0,2,3,4,1])
 
   return tf.keras.Model(input_layer, output, name='encoder')
 
-def build_datagen_model(seq_len, num_features, rho0, num_params, params, deltat, num_traj=1, start_meas=0, sim_noise=True, comp_iq=True, num_meas=1):
+def build_datagen_model(seq_len, num_features, rho0, num_params, params, deltat, num_traj=1, start_meas=0, 
+                        sim_noise=True, comp_iq=True, strong_probs=[], num_meas=1):
   input_layer = tf.keras.layers.Input(shape=(num_params))
   x = input_layer
 
@@ -553,7 +577,7 @@ def build_datagen_model(seq_len, num_features, rho0, num_params, params, deltat,
                                                    maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
                                                    num_traj=num_traj, input_param=[3], start_meas=start_meas, comp_iq=comp_iq,
                                                    sim_noise=sim_noise, meas_param=num_params, num_meas=num_meas,
-                                                   project_rho=False),
+                                                   strong_probs=strong_probs, project_rho=False),
                                 stateful=False,
                                 return_sequences=True,
                                 name='physical_layer')
@@ -571,6 +595,8 @@ def build_datagen_model(seq_len, num_features, rho0, num_params, params, deltat,
   # Split the measurement types back out from the batch index
   # The first num_params+2 elements of the final index include mean, std, and then the input params prior to
   # the concatenated meas params
-  output = tf.transpose(tf.reshape(x[...,:num_params+2], [-1,num_meas,seq_len,num_features,num_params+2]), perm=[0,2,3,4,1])
+  num_strong_probs = len(strong_probs)
+  num_out = 2 + num_strong_probs + num_params
+  output = tf.transpose(tf.reshape(x[...,:num_out], [-1,num_meas,seq_len,num_features,num_out]), perm=[0,2,3,4,1])
 
   return tf.keras.Model(input_layer, output, name='data_gen_model')
