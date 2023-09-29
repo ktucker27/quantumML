@@ -10,7 +10,7 @@ sys.path.append(os.path.join(parent, 'models'))
 
 import fusion
 
-def gen_noise_free(all_params, mint, maxt, deltat, stride, start_meas=0, meas_op=2, input_params=[3], init_ops=[2,2], params=None):
+def gen_noise_free(all_params, mint, maxt, deltat, stride, start_meas=0, meas_op=[2,2], input_params=[3], init_ops=[2,2], params=None):
     if params is None:
       omega = 1.395
       kappa = 0.83156
@@ -34,7 +34,9 @@ def gen_noise_free(all_params, mint, maxt, deltat, stride, start_meas=0, meas_op
       else:
         traj_inputs = tf.concat([traj_inputs, param_inputs], axis=1)
     
-    traj_inputs = tf.concat([tf.cast(traj_inputs, tf.float32), tf.one_hot([meas_op], depth=3)*tf.ones([num_traj,3], tf.float32)], axis=1)
+    meas_op0 = tf.one_hot([meas_op[0]], depth=3)*tf.ones([num_traj,3], tf.float32)
+    meas_op1 = tf.one_hot([meas_op[1]], depth=3)*tf.ones([num_traj,3], tf.float32)
+    traj_inputs = tf.concat([tf.cast(traj_inputs, tf.float32), meas_op0, meas_op1], axis=1)
 
     all_ops = sde_systems.paulis()
     rho0 = sde_systems.get_init_rho(all_ops[init_ops[0]], all_ops[init_ops[1]], 0, 0)[tf.newaxis,...]

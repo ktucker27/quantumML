@@ -388,7 +388,7 @@ def fusion_mse_loss_voltage_xyz(y_true, y_pred):
 
 def fusion_mse_loss_weakstrong(y_true, y_pred, num_strong_probs):
     '''
-    y_true - [traj,time,(qubit0,qubit1,meas_num),meas_idx,(volt,[strong_probs],[true_params])]
+    y_true - [traj,time,(qubit0,qubit1,meas_num0,meas_num1),meas_idx,(volt,[strong_probs],[true_params])]
     y_pred - [traj,time,qubit,(mean,std,[strong_probs],[input_params]),meas_idx]
     '''
     # Evaluate the loss for each sample
@@ -472,7 +472,7 @@ def param_metric_volt_xyz(y_true, y_pred):
 
 def param_metric_weakstrong(y_true, y_pred, num_strong_probs):
     '''
-    y_true - [traj,time,(qubit0,qubit1,meas_num),meas_idx,(volt,[strong_probs],[true_params])]
+    y_true - [traj,time,(qubit0,qubit1,meas_num0,meas_num1),meas_idx,(volt,[strong_probs],[true_params])]
     y_pred - [traj,time,qubit,(mean,std,[strong_probs],[input_params]),meas_idx]
     '''
     return tf.sqrt(tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true[:,-1,0,0,(1+num_strong_probs):], y_pred[:,-1,0,(2+num_strong_probs):,0])))

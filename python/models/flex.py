@@ -320,10 +320,10 @@ def build_flex_model(seq_len, lstm_size, rho0, params, deltat):
   return model
 
 def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, lstm_size, num_params,
-                          rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False, meas_op=2, input_params=[3],
+                          rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False, meas_op=[2,2], input_params=[3],
                           max_val=12, offset=0.0, strong_probs=[], project_rho=True):
   num_meas = 3
-  params = np.concatenate([params, tf.one_hot([meas_op], depth=num_meas)[0,:].numpy()])
+  params = np.concatenate([params, tf.one_hot([meas_op[0]], depth=num_meas)[0,:].numpy(), tf.one_hot([meas_op[1]], depth=num_meas)[0,:].numpy()])
 
   model = tf.keras.Sequential()
 
@@ -389,7 +389,8 @@ def build_multimeas_flex_model(seq_len, num_features, grp_size, avg_size, conv_s
   num_meas = 3
   input_layer = tf.keras.layers.Input(shape=(seq_len, num_features+1, grp_size))
   x = input_layer
-  meas_params = tf.cast(tf.one_hot(tf.cast(x[:,-1,-1,0], tf.int32), depth=num_meas), x.dtype)
+  meas_params0 = tf.cast(tf.one_hot(tf.cast(x[:,-1,-2,0], tf.int32), depth=num_meas), x.dtype)
+  meas_params1 = tf.cast(tf.one_hot(tf.cast(x[:,-1,-1,0], tf.int32), depth=num_meas), x.dtype)
 
   first = True
 
@@ -421,7 +422,7 @@ def build_multimeas_flex_model(seq_len, num_features, grp_size, avg_size, conv_s
   #x = tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: fusion.max_activation_mean0(x, max_val=6, xscale=100.0))(x)
   #x = tf.keras.layers.Lambda(lambda x: x + 1)(x)
 
-  x = tf.concat([x, meas_params], axis=1)
+  x = tf.concat([x, meas_params0, meas_params1], axis=1)
   x = tf.keras.layers.RepeatVector(seq_len, input_shape=[num_params+1])(x)
 
   # Add the physical RNN layer
@@ -456,7 +457,7 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lst
                               max_val=12, offset=0.0, strong_probs=[], project_rho=True, strong_probs_input=False):
   '''
   Input:
-    input_tensor - [traj, time, (qubit0,qubit1,meas_num), meas_idx, (volt,[strong_probs])]
+    input_tensor - [traj, time, (qubit0,qubit1,meas_num0,meas_num1), meas_idx, (volt,[strong_probs])]
   Output:
     if comp_iq:
       output_tensor - [traj, time, m, 2 + len(self.strong_probs) + input_dim] - Second index gives the
@@ -468,17 +469,19 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lst
   num_strong_probs = len(strong_probs)
   num_features_in = num_features
   if num_strong_probs == 0 or not strong_probs_input:
-    input_layer = tf.keras.layers.Input(shape=(seq_len, num_features+1, num_meas))
+    input_layer = tf.keras.layers.Input(shape=(seq_len, num_features+2, num_meas))
     x = input_layer
   else:
     # Add strong probability estimates as additional features
-    input_layer = tf.keras.layers.Input(shape=(seq_len, num_features+1, num_meas, 1+num_strong_probs))
+    input_layer = tf.keras.layers.Input(shape=(seq_len, num_features+2, num_meas, 1+num_strong_probs))
     strong_prob_vals = input_layer[:,-1,-1,-1,1:]
     x = tf.concat([input_layer[:,:,:num_features,:,0], tf.ones_like(input_layer[:,:,:1,:,0])*strong_prob_vals[:,tf.newaxis,:,tf.newaxis], input_layer[:,:,num_features:,:,0]], axis=2)
     num_features += num_strong_probs
     #x = input_layer[...,0]
-  meas_params = tf.cast(tf.one_hot(tf.cast(x[:,-1,-1,:], tf.int32), depth=3), x.dtype)
-  meas_params = tf.reshape(meas_params, [-1,3]) # shape = [batch_size*num_meas,3]
+  meas_params0 = tf.cast(tf.one_hot(tf.cast(x[:,-1,-2,:], tf.int32), depth=3), x.dtype)
+  meas_params0 = tf.reshape(meas_params0, [-1,3]) # shape = [batch_size*num_meas,3]
+  meas_params1 = tf.cast(tf.one_hot(tf.cast(x[:,-1,-1,:], tf.int32), depth=3), x.dtype)
+  meas_params1 = tf.reshape(meas_params1, [-1,3]) # shape = [batch_size*num_meas,3]
 
   x = tf.keras.layers.Reshape([seq_len, num_features*num_meas,1])(x[:,:,:num_features,:])
 
@@ -514,7 +517,7 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lst
   #x = tf.keras.layers.Lambda(lambda x: x + 1)(x)
 
   x = tf.repeat(x, num_meas, axis=0)
-  x = tf.concat([x, meas_params], axis=1)
+  x = tf.concat([x, meas_params0, meas_params1], axis=1)
   x = tf.keras.layers.RepeatVector(seq_len, input_shape=[num_params+3])(x)
 
   # Add the physical RNN layer
@@ -551,14 +554,21 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lst
   return tf.keras.Model(input_layer, output, name='encoder')
 
 def build_datagen_model(seq_len, num_features, rho0, num_params, params, deltat, num_traj=1, start_meas=0, 
-                        sim_noise=True, comp_iq=True, strong_probs=[], num_meas=1):
+                        sim_noise=True, comp_iq=True, strong_probs=[], num_meas=1, meas_op=[]):
   input_layer = tf.keras.layers.Input(shape=(num_params))
   x = input_layer
 
-  meas_params = tf.tile(tf.one_hot(tf.range(0,num_meas,1), depth=3), multiples=[tf.shape(x)[0],1])
+  if len(meas_op) == 0:
+    meas_params = tf.tile(tf.one_hot(tf.range(0,num_meas,1), depth=3), multiples=[tf.shape(x)[0],1])
 
-  x = tf.repeat(x, num_meas, axis=0)
-  x = tf.concat([x, meas_params], axis=1)
+    x = tf.repeat(x, num_meas, axis=0)
+    x = tf.concat([x, meas_params], axis=1)
+  else:
+    assert(len(meas_op) == 2)
+    meas_params0 = tf.tile(tf.one_hot(meas_op[0], depth=3)[tf.newaxis,:], multiples=[tf.shape(x)[0],1])
+    meas_params1 = tf.tile(tf.one_hot(meas_op[1], depth=3)[tf.newaxis,:], multiples=[tf.shape(x)[0],1])
+    x = tf.concat([x, meas_params0, meas_params1], axis=1)
+
   x = tf.keras.layers.RepeatVector(seq_len, input_shape=[num_params])(x)
 
   # Add the physical RNN layer
