@@ -10,17 +10,18 @@ sys.path.append(os.path.join(parent, 'models'))
 
 import fusion
 
-def gen_noise_free(all_params, mint, maxt, deltat, stride, start_meas=0, meas_op=2, input_params=[3], init_ops=[2,2]):
-    omega = 1.395
-    kappa = 0.83156
-    eta = 0.1469
-    eps = 0.1
+def gen_noise_free(all_params, mint, maxt, deltat, stride, start_meas=0, meas_op=2, input_params=[3], init_ops=[2,2], params=None):
+    if params is None:
+      omega = 1.395
+      kappa = 0.83156
+      eta = 0.1469
+      eps = 0.1
+      params = np.array([omega,2.0*kappa,eta,eps], dtype=np.float32)
 
     if len(all_params.shape) == 1:
       all_params = all_params[:,tf.newaxis]
 
     num_traj = all_params.shape[0]
-    params = np.array([omega,2.0*kappa,eta,eps], dtype=np.float32)
     for ii in range(params.shape[0]):
       if ii in input_params:
         param_idx = input_params.index(ii)
@@ -39,6 +40,7 @@ def gen_noise_free(all_params, mint, maxt, deltat, stride, start_meas=0, meas_op
     rho0 = sde_systems.get_init_rho(all_ops[init_ops[0]], all_ops[init_ops[1]], 0, 0)[tf.newaxis,...]
     pauli_names = ['X', 'Y', 'Z']
     print(f'Initial state: {pauli_names[init_ops[0]]}{pauli_names[init_ops[1]]}00')
+    print('params:', params)
 
     rhovec, ivec, _, _ = fusion.run_model_2d(rho0, traj_inputs, num_traj, mint=mint, maxt=maxt, deltat=deltat, sim_noise=False, start_meas=start_meas)
     probs = sde_systems.get_2d_probs(rhovec)

@@ -94,7 +94,7 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
       rhovec_proj = tf.reshape(rhovec_proj, [-1,tf.shape(rhovec)[1]-1,self.pdim,self.pdim])
       rhovec = tf.concat([rhovec[:,:1,:,:], rhovec_proj], axis=1)
 
-      traj_sdes1 = sde_systems.RabiWeakMeasTrajSDE(rhovec, deltat, 0, self.start_meas)
+      traj_sdes1 = sde_systems.RabiWeakMeasTrajSDE(rhovec, deltat, 0)
       ai = traj_sdes1.mia
       if self.sim_noise:
         bi = traj_sdes1.mib
@@ -103,7 +103,7 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
       emod_i = sde_solve.EulerMultiDModel(mint, maxt, deltat, ai, bi, 1, 1, params.shape[1], params, [True, True, True, True], create_params=False)
       ivec1 = emod_i(ivec0[:,0], num_traj, wvec[:,:,0,:][:,:,tf.newaxis,:])
 
-      traj_sdes2 = sde_systems.RabiWeakMeasTrajSDE(rhovec, deltat, 1, self.start_meas)
+      traj_sdes2 = sde_systems.RabiWeakMeasTrajSDE(rhovec, deltat, 1)
       ai = traj_sdes2.mia
       if self.sim_noise:
         bi = traj_sdes2.mib

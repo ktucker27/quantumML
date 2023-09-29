@@ -871,7 +871,7 @@ class RabiWeakMeasTrajSDE:
     def mia0(self,t,x,p_in):
         p = p_in
         if t < self.start_meas:
-            p = p*tf.repeat(tf.constant([1,0,0,1,1,1,1], dtype=p.dtype), tf.shape(p)[0])
+            p = p*tf.repeat(tf.constant([[1,0,0,1,1,1,1]], dtype=p.dtype), tf.shape(p)[0], axis=0)
         
         rho = self.get_rho(t,p)
         _, _, sz = paulis()
@@ -895,9 +895,9 @@ class RabiWeakMeasTrajSDE:
         p = p_in
         if t < self.start_meas:
             if self.rho_param_idx >= 0:
-                p = p*tf.repeat(tf.constant([1,0,0,1,1,1,1,1], dtype=p.dtype), tf.shape(p)[0])
+                p = p*tf.repeat(tf.constant([[1,0,0,1,1,1,1,1]], dtype=p.dtype), tf.shape(p)[0], axis=0)
             else:
-                p = p*tf.repeat(tf.constant([1,0,0,1,1,1,1], dtype=p.dtype), tf.shape(p)[0])
+                p = p*tf.repeat(tf.constant([[1,0,0,1,1,1,1]], dtype=p.dtype), tf.shape(p)[0], axis=0)
         
         if tf.rank(p) == 1:
             p = p[tf.newaxis,:]
@@ -911,7 +911,9 @@ class RabiWeakMeasTrajSDE:
         return tf.cast(tf.pow(0.5*p[:,2,tf.newaxis,tf.newaxis],0.5), dtype=rho.dtype)*tf.reshape(tf.linalg.trace(tf.matmul(rho,2.0*l)), [-1,1,1])
 
     def mib(self,t,x,p):
-        if t < self.start_meas:
+        if tf.rank(p) == 1:
+            p = p[tf.newaxis,:]
+        if t < self.start_meas or tf.reduce_max(tf.abs(p[:,1:3])) == 0:
             return tf.zeros(tf.shape(x), dtype=x.dtype)
         return tf.ones(tf.shape(x), dtype=x.dtype)
     
