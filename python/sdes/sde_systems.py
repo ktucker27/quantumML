@@ -286,6 +286,15 @@ def supd_herm(l,rho):
         d2 = 0.5*(tf.matmul(l2,rho) + tf.matmul(rho,l2))
         return d1 - d2
 
+def supd_general(l,rho):
+        '''
+        NB: Does not assume l is Hermetian
+        '''
+        d1 = tf.matmul(l,tf.matmul(rho,tf.transpose(l, conjugate=True, perm=(0,2,1))))
+        l2 = tf.matmul(tf.transpose(l, conjugate=True, perm=(0,2,1)),l)
+        d2 = 0.5*(tf.matmul(l2,rho) + tf.matmul(rho,l2))
+        return d1 - d2
+
 def suph_herm(l,rho):
     '''
     NB: It is assumed that l is Hermetian as conjugate transposes are omitted
@@ -656,7 +665,7 @@ class RabiWeakMeasSDE:
         #n = np.log2(pdim).astype(int)
         p = p_in
         if t < start_meas:
-            p = p*tf.repeat(tf.constant([1,0,0,1,1,1,1,1,1,1], dtype=p.dtype), tf.shape(p)[0])
+            p = p*tf.repeat(tf.constant([1,0,0,1,1,1,1,1,1,1,1], dtype=p.dtype), tf.shape(p)[0])
         
         pdim = 4
         n = 2
@@ -680,11 +689,11 @@ class RabiWeakMeasSDE:
             ham = ham + pten*(sx_rho - rho_sx)
 
         # Add crosstalk terms
-        #assert(tf.shape(p)[1] - 3 <= n-1)
-        epsend = 3 + n_choose_2
-        for epsidx in range(3, epsend):
-            _, _, szj, _, syj = [2.0*sm for sm in operations.prod_ops(epsidx - 3, 2, n)]
-            _, _, szjp1, _, syjp1 = [2.0*sm for sm in operations.prod_ops(epsidx - 3 + 1, 2, n)]
+        #assert(tf.shape(p)[1] - 4 <= n-1)
+        epsend = 4 + n_choose_2
+        for epsidx in range(4, epsend):
+            _, _, szj, _, syj = [2.0*sm for sm in operations.prod_ops(epsidx - 4, 2, n)]
+            _, _, szjp1, _, syjp1 = [2.0*sm for sm in operations.prod_ops(epsidx - 4 + 1, 2, n)]
 
             pten = -1.0j*tf.cast(tf.expand_dims(tf.dtypes.complex(p[:,epsidx], 0.0), axis=1), dtype=tf.complex128)
             pten = tf.expand_dims(pten, axis=1)
@@ -699,10 +708,11 @@ class RabiWeakMeasSDE:
         x_out = wrap_rho_to_x(ham, pdim)[:,:,tf.newaxis]
         
         for j in range(n):
-            _, _, szj, sxj, syj = [2.0*sm for sm in operations.prod_ops(j, 2, n)]
+            _, smj2, szj, sxj, syj = [2.0*sm for sm in operations.prod_ops(j, 2, n)]
             xyz_ten = tf.concat([sxj[tf.newaxis,...], syj[tf.newaxis,...], szj[tf.newaxis,...]], axis=0)
             cj = tf.gather(xyz_ten, tf.argmax(p[:,epsend+3*j:epsend+3*j+3], axis=1))
 
+            # Add weak measurement back-action term
             #supd = supd_herm(tf.pow(0.5*tf.cast(p[:,1,tf.newaxis,tf.newaxis], tf.complex128),0.5)*szj, rho)
             pten1 = tf.cast(tf.pow(0.5*tf.dtypes.complex(p[:,1], 0.0),0.5), dtype=tf.complex128)
             pten1 = tf.expand_dims(pten1, axis=1)
@@ -710,6 +720,14 @@ class RabiWeakMeasSDE:
             supd = supd_herm(pten1*cj, rho)
 
             x_out = x_out + wrap_rho_to_x(supd, pdim)[:,:,tf.newaxis]
+
+            # Add spontaneous emission term
+            pten3 = tf.cast(tf.pow(tf.dtypes.complex(p[:,3], 0.0),0.5), dtype=tf.complex128)
+            pten3 = tf.expand_dims(pten3, axis=1)
+            pten3 = tf.expand_dims(pten3, axis=1)
+            supd_gen = supd_general(pten3*0.5*smj2, rho)
+
+            x_out = x_out + wrap_rho_to_x(supd_gen, pdim)[:,:,tf.newaxis]
 
         return x_out
 
@@ -723,12 +741,12 @@ class RabiWeakMeasSDE:
         #n = np.log2(pdim).astype(int)
         p = p_in
         if t < start_meas:
-            p = p*tf.repeat(tf.constant([1,0,0,1,1,1,1,1,1,1], dtype=p.dtype), tf.shape(p)[0])
+            p = p*tf.repeat(tf.constant([1,0,0,1,1,1,1,1,1,1,1], dtype=p.dtype), tf.shape(p)[0])
         
         pdim = 4
         n = 2
         n_choose_2 = 1
-        epsend = 3 + n_choose_2
+        epsend = 4 + n_choose_2
 
         rho = unwrap_x_to_rho(x[...,0], pdim)
 
@@ -763,12 +781,12 @@ class RabiWeakMeasSDE:
         # return shape = [num_traj,m,d,d]
         p = p_in
         if t < start_meas:
-            p = p*tf.repeat(tf.constant([1,0,0,1,1,1,1,1,1,1], dtype=p.dtype), tf.shape(p)[0])
+            p = p*tf.repeat(tf.constant([1,0,0,1,1,1,1,1,1,1,1], dtype=p.dtype), tf.shape(p)[0])
         
         pdim = int(-0.5 + np.sqrt(0.25 + 2.0*tf.cast(tf.shape(x)[1], dtype=tf.float32)))
         n = np.log2(pdim).astype(int)
         n_choose_2 = 1
-        epsend = 3 + n_choose_2
+        epsend = 4 + n_choose_2
 
         rho = unwrap_x_to_rho(x[...,0], pdim)
         if tf.rank(p) == 1:
@@ -818,7 +836,7 @@ class RabiWeakMeasSDE:
 
         return ham
 
-    def get_liouv(omega, gamma, epsilons, n, meas_idx=[2,2]):
+    def get_liouv(omega, gamma, epsilons, n, meas_idx=[2,2], gamma_s = 0.0, gamma_z = 0.0):
         pdim = 2**n
 
         liouv = np.zeros([pdim**2, pdim**2], dtype=np.cdouble)
@@ -830,10 +848,21 @@ class RabiWeakMeasSDE:
 
         # Lindblad terms
         for j in range(n):
-            _, _, szj, sxj, syj = [2.0*sm.numpy() for sm in operations.prod_ops(j, 2, n)]
+            spj2, smj2, szj, sxj, syj = [2.0*sm.numpy() for sm in operations.prod_ops(j, 2, n)]
             cj = [sxj, syj, szj][meas_idx[j]]
             liouv = liouv + 0.5*gamma*(kron(cj, np.transpose(cj)).numpy() - np.eye(pdim**2, dtype=np.cdouble))
 
+            if gamma_s > 0:
+                spj = 0.5*spj2
+                smj = 0.5*smj2
+                spmj = np.matmul(spj, smj)
+                liouv = liouv + gamma_s*(kron(smj, np.transpose(spj)).numpy()
+                                         - 0.5*(kron(spmj, np.eye(pdim, dtype=np.cdouble)).numpy()
+                                                + kron(np.eye(pdim, dtype=np.cdouble), np.transpose(spmj)).numpy()))
+            
+            if gamma_z > 0:
+                liouv = liouv + gamma_z*(kron(szj, np.transpose(szj)).numpy() - np.eye(pdim**2, dtype=np.cdouble))
+        
         return liouv
 
 class RabiWeakMeasTrajSDE:
@@ -849,7 +878,7 @@ class RabiWeakMeasTrajSDE:
         self.pdim = 4
         self.n = 2
         self.n_choose_2 = 1
-        self.epsend = 3 + self.n_choose_2
+        self.epsend = 4 + self.n_choose_2
         #self.pdim = tf.shape(rhovec)[2]
         #self.n = int(np.math.log2(self.pdim))
         self.rhovec = rhovec
@@ -872,7 +901,7 @@ class RabiWeakMeasTrajSDE:
     def mia0(self,t,x,p_in):
         p = p_in
         if t < self.start_meas:
-            p = p*tf.repeat(tf.constant([[1,0,0,1,1,1,1,1,1,1]], dtype=p.dtype), tf.shape(p)[0], axis=0)
+            p = p*tf.repeat(tf.constant([[1,0,0,1,1,1,1,1,1,1,1]], dtype=p.dtype), tf.shape(p)[0], axis=0)
         
         rho = self.get_rho(t,p)
         _, _, sz = paulis()
@@ -896,10 +925,10 @@ class RabiWeakMeasTrajSDE:
         p = p_in
         if t < self.start_meas:
             if self.rho_param_idx >= 0:
-                p = p*tf.repeat(tf.constant([[1,0,0,1,1,1,1,1,1,1,1]], dtype=p.dtype), tf.shape(p)[0], axis=0)
+                p = p*tf.repeat(tf.constant([[1,0,0,1,1,1,1,1,1,1,1,1]], dtype=p.dtype), tf.shape(p)[0], axis=0)
             else:
-                p = p*tf.repeat(tf.constant([[1,0,0,1,1,1,1,1,1,1]], dtype=p.dtype), tf.shape(p)[0], axis=0)
-        
+                p = p*tf.repeat(tf.constant([[1,0,0,1,1,1,1,1,1,1,1]], dtype=p.dtype), tf.shape(p)[0], axis=0)
+
         if tf.rank(p) == 1:
             p = p[tf.newaxis,:]
         rho = self.get_rho(t,p)

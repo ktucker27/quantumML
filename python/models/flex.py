@@ -320,7 +320,7 @@ def build_flex_model(seq_len, lstm_size, rho0, params, deltat):
   return model
 
 def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, lstm_size, num_params,
-                          rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False, meas_op=[2,2], input_params=[3],
+                          rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False, meas_op=[2,2], input_params=[4],
                           max_val=12, offset=0.0, strong_probs=[], project_rho=True):
   num_meas = 3
   params = np.concatenate([params, tf.one_hot([meas_op[0]], depth=num_meas)[0,:].numpy(), tf.one_hot([meas_op[1]], depth=num_meas)[0,:].numpy()])
@@ -384,7 +384,7 @@ def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes,
   return model
 
 def build_cnn_flex_model(seq_len, num_features, grp_size, filt_grp_size, avg_size, conv_sizes, encoder_sizes, lstm_size, num_params,
-                         rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False, meas_op=[2,2], input_params=[3],
+                         rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False, meas_op=[2,2], input_params=[4],
                          max_val=12, offset=0.0, xscale=100.0, strong_probs=[], project_rho=True):
   num_meas = 3
   params = np.concatenate([params, tf.one_hot([meas_op[0]], depth=num_meas)[0,:].numpy(), tf.one_hot([meas_op[1]], depth=num_meas)[0,:].numpy()])
@@ -521,7 +521,7 @@ def build_multimeas_flex_model(seq_len, num_features, grp_size, avg_size, conv_s
   return tf.keras.Model(input_layer, output, name='encoder')
 
 def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lstm_size, dec_lstm_size, td_sizes, encoder_sizes, num_params,
-                              rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False, input_params=[3],
+                              rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False, input_params=[4],
                               max_val=12, offset=0.0, strong_probs=[], project_rho=True, strong_probs_input=False):
   '''
   Input:
@@ -630,7 +630,7 @@ def build_datagen_model(seq_len, num_features, rho0, num_params, params, deltat,
     meas_params = tf.tile(tf.one_hot(tf.range(0,num_meas,1), depth=3), multiples=[tf.shape(x)[0],1])
 
     x = tf.repeat(x, num_meas, axis=0)
-    x = tf.concat([x, meas_params], axis=1)
+    x = tf.concat([x, meas_params, meas_params], axis=1)
   else:
     assert(len(meas_op) == 2)
     meas_params0 = tf.tile(tf.one_hot(meas_op[0], depth=3)[tf.newaxis,:], multiples=[tf.shape(x)[0],1])
@@ -653,7 +653,7 @@ def build_datagen_model(seq_len, num_features, rho0, num_params, params, deltat,
 
   rnn_layer = tf.keras.layers.RNN(EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
                                                    maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
-                                                   num_traj=num_traj, input_param=[3], start_meas=start_meas, comp_iq=comp_iq,
+                                                   num_traj=num_traj, input_param=[4], start_meas=start_meas, comp_iq=comp_iq,
                                                    sim_noise=sim_noise, meas_param=num_params, num_meas=num_meas,
                                                    strong_probs=strong_probs, project_rho=False),
                                 stateful=False,
