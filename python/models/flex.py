@@ -383,6 +383,74 @@ def build_full_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes,
 
   return model
 
+def build_cnn_flex_model(seq_len, num_features, grp_size, filt_grp_size, avg_size, conv_sizes, encoder_sizes, lstm_size, num_params,
+                         rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False, meas_op=[2,2], input_params=[3],
+                         max_val=12, offset=0.0, xscale=100.0, strong_probs=[], project_rho=True):
+  num_meas = 3
+  params = np.concatenate([params, tf.one_hot([meas_op[0]], depth=num_meas)[0,:].numpy(), tf.one_hot([meas_op[1]], depth=num_meas)[0,:].numpy()])
+  print('act scale avg')
+
+  model = tf.keras.Sequential()
+
+  first = True
+
+  if avg_size is not None:
+    model.add(tf.keras.layers.AveragePooling3D((avg_size, filt_grp_size, num_features), strides=1, input_shape=(seq_len, grp_size, num_features, 1)))
+    first = False
+  else:
+    avg_size = 20
+  
+  for conv_idx, conv_size in enumerate(conv_sizes):
+    if first:
+      model.add(tf.keras.layers.Conv3D(conv_size, (avg_size, filt_grp_size, num_features), input_shape=(seq_len, grp_size, num_features, 1)))
+      first = False
+    else:
+      if conv_idx == 0:
+        model.add(tf.keras.layers.Conv3D(conv_size, (avg_size, filt_grp_size, 1), strides=1))
+      elif conv_idx == 1:
+        model.add(tf.keras.layers.Conv3D(conv_size, (avg_size, filt_grp_size, 1)))
+      else:
+        model.add(tf.keras.layers.Conv3D(conv_size, (avg_size, filt_grp_size, 1)))
+    model.add(tf.keras.layers.AveragePooling3D((avg_size,filt_grp_size,1), strides=(1,1,1)))
+
+  model.add(tf.keras.layers.Lambda(lambda x: tf.reduce_mean(x, axis=2)))
+
+  model.add(tf.keras.layers.Flatten())
+
+  for size in encoder_sizes:
+    model.add(tf.keras.layers.Dense(size, activation='leaky_relu'))
+
+  model.add(tf.keras.layers.Dense(num_params, name='param_layer_maxact', activation=lambda x: fusion.max_activation_mean0(x, max_val=max_val, xscale=xscale, offset=offset)))
+  #model.add(tf.keras.layers.Dense(num_params, name='param_layer', activation=lambda x: fusion.linear_activation_scaled(x, xscale=1.0)))
+  #model.add(tf.keras.layers.Dense(num_params, name='param_layer_noact'))
+
+  assert(num_params == len(input_params))
+  model.add(tf.keras.layers.RepeatVector(seq_len, input_shape=[num_params]))
+
+  # Add the physical RNN layer
+  a_rnn_cell_real = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+  a_rnn_cell_imag = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+  b_rnn_cell_real = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+  b_rnn_cell_imag = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+
+  model.add(tf.keras.layers.RNN(EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
+                                                 maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
+                                                 num_traj=num_traj, input_param=input_params, start_meas=start_meas, comp_iq=comp_iq,
+                                                 num_meas=num_meas, strong_probs=strong_probs, project_rho=project_rho),
+                                stateful=False,
+                                return_sequences=True,
+                                name='physical_layer'))
+  
+  # Make sure the biases are zero
+  # TODO - Why is this needed?
+  #xdim = 10
+  #model.layers[-1].cell.flex.a_cell_real.trainable_weights[-1].assign(tf.zeros(4*xdim))
+  #model.layers[-1].cell.flex.a_cell_imag.trainable_weights[-1].assign(tf.zeros(4*xdim))
+  #model.layers[-1].cell.flex.b_cell_real.trainable_weights[-1].assign(tf.zeros(4*xdim))
+  #model.layers[-1].cell.flex.b_cell_imag.trainable_weights[-1].assign(tf.zeros(4*xdim))
+
+  return model
+
 def build_multimeas_flex_model(seq_len, num_features, grp_size, avg_size, conv_sizes, encoder_sizes, lstm_size,
                                num_params, rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False,
                                strong_probs=[], project_rho=True):
