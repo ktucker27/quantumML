@@ -69,7 +69,7 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     self.flex.init_states(batch_size*self.num_traj)
     return [tf.reshape(tf.ones([self.num_traj*batch_size,1], dtype=tf.complex128)*tf.cast(tf.constant(self.rho0), dtype=tf.complex128), [self.num_traj*batch_size,self.pdim,self.pdim]), tf.zeros([self.num_traj*batch_size,self.m], dtype=tf.complex128), 0.0]
 
-  def run_model(self, rho, ivec0, params, num_traj, mint, maxt, deltat=2**(-8)):
+  def run_model(self, rho, ivec0, params, num_traj, mint, maxt, deltat=2**(-8), tten=None):
     x0 = sde_systems.wrap_rho_to_x(rho, self.pdim)
 
     d = 10
@@ -80,7 +80,7 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     b = self.zero_b
     if self.sim_noise:
       b = self.flex.b
-    emod = sde_solve.EulerMultiDModel(mint, maxt, deltat, self.flex.a, b, d, m, params.shape[1], params, [True, True, True, True], create_params=False)
+    emod = sde_solve.EulerMultiDModel(mint, maxt, deltat, self.flex.a, b, d, m, params.shape[1], params, [True, True, True, True], create_params=False, tten=tten)
     xvec = emod(x0, num_traj, wvec, params)
     rhovec = sde_systems.unwrap_x_to_rho(tf.reshape(tf.transpose(xvec, perm=[0,2,1]), [-1,10]), self.pdim)
     rhovec = tf.reshape(rhovec, [num_traj,-1,self.pdim,self.pdim])
@@ -163,7 +163,8 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     #ivec = tf.tile(ivec, multiples=[self.num_traj,1])
 
     # Advance the state one time step
-    rhovecs, ivec = self.run_model(rho, ivec, traj_inputs, num_traj=tf.shape(traj_inputs)[0], mint=0, maxt=self.maxt, deltat=self.deltat)
+    tten = tf.range(t, t+1.5*self.deltat, self.deltat)
+    rhovecs, ivec = self.run_model(rho, ivec, traj_inputs, num_traj=tf.shape(traj_inputs)[0], mint=0, maxt=self.maxt, deltat=self.deltat, tten=tten)
     rhovecs = rhovecs[:,-1,:,:]
     ivec = ivec[:,-1,:]
 
