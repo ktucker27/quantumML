@@ -25,6 +25,38 @@ datadir = os.path.join(repodir, 'data')
 test_tns_verbose = False
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
 
+def validate_density(rhovec, tol=1e-12):
+    '''
+    Input:
+    rhovec - shape = [batch, pdim, pdim] density operators
+    '''
+    # Check trace
+    success = True
+    trace_err = tf.reduce_max(tf.abs(1.0 - tf.linalg.trace(rhovec)))
+    print('Max trace abs error:', trace_err)
+    if trace_err > tol:
+        success = False
+    
+    # Check Hermiticity
+    rho_dagger = tf.transpose(rhovec, perm=[0,2,1], conjugate=True)
+    herm_err = tf.reduce_max(tf.sqrt(tf.reduce_sum(tf.square(tf.abs(rhovec - rho_dagger)), axis=[1,2])))
+    print('Max rho - rho* F-norm:', herm_err)
+    if herm_err > tol:
+        success = False
+    
+    # Check positivity
+    evals, _ = tf.linalg.eig(rhovec)
+    max_imag = tf.reduce_max(tf.abs(tf.math.imag(evals)))
+    min_eval = tf.reduce_min(tf.math.real(evals))
+    print('Max imag:', max_imag)
+    print('Min eval:', min_eval)
+    print('Evals checked:', evals.shape)
+    if max_imag > tol or min_eval < -1.0*tol:
+        success = False
+    
+    print('Pass:', success)
+    return success
+
 def load_truth_file_two_qubits(filepath, return_dict):
     '''Loads a single tab delimited ground truth file'''
     

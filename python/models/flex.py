@@ -36,6 +36,8 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     self.pdim = 4 # TODO - Remove hard-coded dimension
     self.m = 2
 
+    self.return_density = False
+
     self.pre_meas_params = np.copy(params)
     self.pre_meas_params[1] = 0 # kappa
     self.pre_meas_params[2] = 0 # eta
@@ -68,6 +70,9 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
     self.flex.init_states(batch_size*self.num_traj)
     return [tf.reshape(tf.ones([self.num_traj*batch_size,1], dtype=tf.complex128)*tf.cast(tf.constant(self.rho0), dtype=tf.complex128), [self.num_traj*batch_size,self.pdim,self.pdim]), tf.zeros([self.num_traj*batch_size,self.m], dtype=tf.complex128), 0.0]
+
+  def set_return_density(self, return_density):
+    self.return_density = return_density
 
   def run_model(self, rho, ivec0, params, num_traj, mint, maxt, deltat=2**(-8), tten=None):
     x0 = sde_systems.wrap_rho_to_x(rho, self.pdim)
@@ -194,7 +199,10 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
         ivec_out = tf.concat([ivec_mean[...,tf.newaxis], ivec_std[...,tf.newaxis], tf.tile(tf.gather(probs, self.strong_probs, axis=1)[:,tf.newaxis,:], multiples=[1,2,1]), tf.cast(tf.tile(inputs[:,tf.newaxis,:], multiples=[1,2,1]), dtype=tf.float64)], axis=-1)
       else:
         ivec_out = tf.concat([ivec_mean[...,tf.newaxis], ivec_std[...,tf.newaxis], tf.cast(tf.tile(inputs[:,tf.newaxis,:], multiples=[1,2,1]), dtype=tf.float64)], axis=-1)
-      return ivec_out, [rhovecs, ivec, t]
+      if self.return_density:
+        return rhovecs, [rhovecs, ivec, t]
+      else:
+        return ivec_out, [rhovecs, ivec, t]
 
     
     #probs = tf.math.maximum(probs,0)
@@ -204,6 +212,8 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     #mask = tf.math.logical_not(tf.math.is_nan(tf.reduce_max(tf.math.real(probs), axis=[1])))
     #probs = tf.boolean_mask(probs, mask)
 
+    if self.return_density:
+      return tf.concat((rhovecs, tf.cast(inputs[:,:], dtype=tf.float64)), axis=1), [rhovecs, ivec, t]
     return tf.concat((probs, tf.cast(inputs[:,:], dtype=tf.float64)), axis=1), [rhovecs, ivec, t]
 
 class SDERNNCell(tf.keras.layers.Layer):
