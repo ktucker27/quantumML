@@ -470,6 +470,10 @@ def param_metric_volt(y_true, y_pred):
 def param_metric_volt_xyz(y_true, y_pred):
     return tf.sqrt(tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true[:,-1,0,0,1:], y_pred[:,-1,0,2:,0])))
 
+def param_metric_volt_xyz_trimmed_mse(y_true, y_pred):
+    trim_idx = int(y_true.shape[0]/10)
+    return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true[trim_idx:-trim_idx,-1,0,0,1:], y_pred[trim_idx:-trim_idx,-1,0,2:,0]))
+
 def param_metric_weakstrong(y_true, y_pred, num_strong_probs):
     '''
     y_true - [traj,time,(qubit0,qubit1,meas_num0,meas_num1),meas_idx,(volt,[strong_probs],[true_params])]
