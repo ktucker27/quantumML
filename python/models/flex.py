@@ -633,7 +633,7 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lst
   return tf.keras.Model(input_layer, output, name='encoder')
 
 def build_datagen_model(seq_len, num_features, rho0, num_params, params, deltat, num_traj=1, start_meas=0, 
-                        sim_noise=True, comp_iq=True, strong_probs=[], num_meas=1, meas_op=[]):
+                        sim_noise=True, comp_iq=True, input_params=[4], strong_probs=[], num_meas=1, meas_op=[]):
   input_layer = tf.keras.layers.Input(shape=(num_params))
   x = input_layer
 
@@ -664,7 +664,7 @@ def build_datagen_model(seq_len, num_features, rho0, num_params, params, deltat,
 
   rnn_layer = tf.keras.layers.RNN(EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
                                                    maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
-                                                   num_traj=num_traj, input_param=[4], start_meas=start_meas, comp_iq=comp_iq,
+                                                   num_traj=num_traj, input_param=input_params, start_meas=start_meas, comp_iq=comp_iq,
                                                    sim_noise=sim_noise, meas_param=num_params, num_meas=num_meas,
                                                    strong_probs=strong_probs, project_rho=False),
                                 stateful=False,

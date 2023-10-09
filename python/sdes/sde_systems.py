@@ -741,7 +741,7 @@ class RabiWeakMeasSDE:
         #n = np.log2(pdim).astype(int)
         p = p_in
         if t < start_meas:
-            p = p*tf.repeat(tf.constant([1,0,0,1,1,1,1,1,1,1,1], dtype=p.dtype), tf.shape(p)[0])
+            p = p*tf.repeat(tf.constant([[1,0,0,1,1,1,1,1,1,1,1]], dtype=p.dtype), tf.shape(p)[0], axis=0)
         
         pdim = 4
         n = 2
