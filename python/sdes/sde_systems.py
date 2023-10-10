@@ -504,9 +504,9 @@ class FlexSDE:
     
     def a(self,t,x,p):
         p_in = p
-        if self.num_meas > 1:
-            #p_in = tf.reshape(tf.transpose(tf.matmul(p[:,:-self.num_meas,tf.newaxis], p[:,tf.newaxis,-self.num_meas:]), perm=(0,2,1)), [tf.shape(p)[0],12])
-            p_in = p[:,:-self.num_meas]
+        #if self.num_meas > 1:
+        #    #p_in = tf.reshape(tf.transpose(tf.matmul(p[:,:-self.num_meas,tf.newaxis], p[:,tf.newaxis,-self.num_meas:]), perm=(0,2,1)), [tf.shape(p)[0],12])
+        #    p_in = p[:,:-self.num_meas]
 
         cell_out_real, states = self.a_cell_real(tf.concat([p_in, tf.cast(tf.math.real(x[:,:,0]), tf.float32)], axis=1),[self.a_state_real, self.a_carry_real])
         cell_out_real = self.a_dense_real(cell_out_real)
@@ -522,9 +522,9 @@ class FlexSDE:
 
     def b(self,t,x,p):
         p_in = p
-        if self.num_meas > 1:
-            #p_in = tf.reshape(tf.transpose(tf.matmul(p[:,:-self.num_meas,tf.newaxis], p[:,tf.newaxis,-self.num_meas:]), perm=(0,2,1)), [tf.shape(p)[0],12])
-            p_in = p[:,:-self.num_meas]
+        #if self.num_meas > 1:
+        #    #p_in = tf.reshape(tf.transpose(tf.matmul(p[:,:-self.num_meas,tf.newaxis], p[:,tf.newaxis,-self.num_meas:]), perm=(0,2,1)), [tf.shape(p)[0],12])
+        #    p_in = p[:,:-self.num_meas]
 
         cell_out_real, states = self.b_cell_real(tf.concat([p_in, tf.cast(tf.math.real(x[:,:,0]), tf.float32)], axis=1),[self.b_state_real, self.b_carry_real])
         cell_out_real = self.b_dense_real(cell_out_real)

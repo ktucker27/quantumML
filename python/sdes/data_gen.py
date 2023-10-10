@@ -15,8 +15,9 @@ def gen_noise_free(all_params, mint, maxt, deltat, stride, start_meas=0, meas_op
       omega = 1.395
       kappa = 0.83156
       eta = 0.1469
+      gamma_s = 0.0
       eps = 0.1
-      params = np.array([omega,2.0*kappa,eta,eps], dtype=np.float32)
+      params = np.array([omega,2.0*kappa,eta,gamma_s,eps], dtype=np.float32)
 
     if len(all_params.shape) == 1:
       all_params = all_params[:,tf.newaxis]
