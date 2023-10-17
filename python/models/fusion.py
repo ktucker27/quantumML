@@ -381,8 +381,8 @@ def fusion_mse_loss_voltage_zz(y_true, y_pred):
 
 def fusion_mse_loss_voltage_xyz(y_true, y_pred):
     # Evaluate the loss for each sample
-    y_true_ro_results = tf.cast(y_true, tf.float32)[:,1:,:2,:,0]
-    y_pred_ro_results = tf.cast(y_pred, tf.float32)[:,:-1,:,0,:]
+    y_true_ro_results = tf.cast(y_true, tf.float32)[:,:,:2,:,0]
+    y_pred_ro_results = tf.cast(y_pred, tf.float32)[:,:,:,0,:]
 
     return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true_ro_results, y_pred_ro_results))
 
@@ -472,6 +472,12 @@ def param_metric_volt_xyz(y_true, y_pred):
 
 def param_metric_volt_xyz_mse(y_true, y_pred):
     return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true[:,-1,0,0,1:], y_pred[:,-1,0,2:,0]))
+
+def param_metric_omega_mse(y_true, y_pred):
+    return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true[:,-1,0,0,-2], y_pred[:,-1,0,-2,0]))
+
+def param_metric_eps_mse(y_true, y_pred):
+    return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true[:,-1,0,0,-1], y_pred[:,-1,0,-1,0]))
 
 def param_metric_volt_xyz_trimmed_mse(y_true, y_pred):
     trim_idx = tf.cast(y_true.shape[0]/10, tf.int32)
