@@ -474,10 +474,14 @@ def param_metric_volt_xyz_mse(y_true, y_pred):
     return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true[:,-1,0,0,1:], y_pred[:,-1,0,2:,0]))
 
 def param_metric_omega_mse(y_true, y_pred):
-    return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true[:,-1,0,0,-2], y_pred[:,-1,0,-2,0]))
+    trim_idx = tf.cast(y_true.shape[0]/10, tf.int32)
+    trim_range = tf.range(trim_idx,y_true.shape[0] - trim_idx)
+    return tf.reduce_mean(tf.keras.metrics.mean_squared_error(tf.gather(y_true[:,-1,0,0,-2], trim_range, axis=0), tf.gather(y_pred[:,-1,0,-2,0], trim_range, axis=0)))
 
 def param_metric_eps_mse(y_true, y_pred):
-    return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true[:,-1,0,0,-1], y_pred[:,-1,0,-1,0]))
+    trim_idx = tf.cast(y_true.shape[0]/10, tf.int32)
+    trim_range = tf.range(trim_idx,y_true.shape[0] - trim_idx)
+    return tf.reduce_mean(tf.keras.metrics.mean_squared_error(tf.gather(y_true[:,-1,0,0,-1], trim_range, axis=0), tf.gather(y_pred[:,-1,0,-1,0], trim_range, axis=0)))
 
 def param_metric_volt_xyz_trimmed_mse(y_true, y_pred):
     trim_idx = tf.cast(y_true.shape[0]/10, tf.int32)
