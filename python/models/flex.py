@@ -533,7 +533,8 @@ def build_multimeas_flex_model(seq_len, num_features, grp_size, avg_size, conv_s
 
 def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lstm_size, dec_lstm_size, td_sizes, encoder_sizes, num_params,
                               rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False, input_params=[4],
-                              max_val=12, offset=0.0, strong_probs=[], project_rho=True, strong_probs_input=False):
+                              max_val=12, offset=0.0, strong_probs=[], project_rho=True, strong_probs_input=False,
+                              num_per_group=-1, params_per_group=-1):
   '''
   Input:
     input_tensor - [traj, time, (qubit0,qubit1,meas_num0,meas_num1), meas_idx, (volt,[strong_probs])]
@@ -547,7 +548,13 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lst
   '''
   num_strong_probs = len(strong_probs)
   num_features_in = num_features
-  if num_strong_probs == 0 or not strong_probs_input:
+  if num_per_group > 0:
+    assert(params_per_group > 0)
+    input_layer = tf.keras.layers.Input(shape=(params_per_group, seq_len, num_features+2, num_meas))
+    x = input_layer
+    x = tf.reduce_mean(tf.reshape(x, [num_per_group, -1, params_per_group, seq_len,num_features+2, num_meas]), axis=0)
+    x = tf.reshape(tf.transpose(x, perm=[1,0,2,3,4]), [-1, seq_len, num_features+2, num_meas])
+  elif num_strong_probs == 0 or not strong_probs_input:
     input_layer = tf.keras.layers.Input(shape=(seq_len, num_features+2, num_meas))
     x = input_layer
   else:
@@ -629,6 +636,11 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lst
   # then the input params prior to the concatenated meas params
   num_out = 2 + num_strong_probs + num_params
   output = tf.transpose(tf.reshape(x[...,:num_out], [-1,num_meas,seq_len,num_features_in,num_out]), perm=[0,2,3,4,1])
+
+  # Split the groups back out of the first index, if requested
+  if num_per_group > 0:
+    output = tf.reshape(output, [params_per_group,-1,seq_len,num_features_in,num_out,num_meas])
+    output = tf.transpose(output, perm=[1,0,2,3,4,5])
 
   return tf.keras.Model(input_layer, output, name='encoder')
 

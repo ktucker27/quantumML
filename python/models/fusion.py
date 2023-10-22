@@ -57,6 +57,19 @@ def sample_thin(data, frac):
 
     return data[val_idcs,...]
 
+def save_model(model, modeldir):
+  for idx, val in enumerate(model.trainable_variables):
+    savedir = os.path.join(modeldir, f'{idx}')
+    if not os.path.exists(savedir):
+      os.makedirs(savedir)
+    tf.saved_model.save(val, savedir)
+
+def load_model(model, modeldir):
+  for idx, val in enumerate(model.trainable_variables):
+    savedir = os.path.join(modeldir, f'{idx}')
+    saved_val = tf.saved_model.load(savedir)
+    val.assign(saved_val)
+
 def init_to_onehot(x_data, y_data):
   '''
   Encodes initial conditions as a one-hot vector
@@ -386,6 +399,18 @@ def fusion_mse_loss_voltage_xyz(y_true, y_pred):
 
     return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true_ro_results, y_pred_ro_results))
 
+def fusion_mse_loss_shuffle(y_true, y_pred):
+    '''
+    y_true - [group,param,time,(qubit0,qubit1,meas_num0,meas_num1),meas_idx,(volt,[strong_probs],[true_params])]
+    y_pred - [group,param,time,qubit,(mean,std,[strong_probs],[input_params]),meas_idx]
+    '''
+    y_true = tf.repeat(y_true[:1,...], tf.shape(y_pred)[0], axis=0)
+    # Evaluate the loss for each sample
+    y_true_ro_results = tf.cast(y_true, tf.float32)[:,:,:,:2,:,0]
+    y_pred_ro_results = tf.cast(y_pred, tf.float32)[:,:,:,:,0,:]
+
+    return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true_ro_results, y_pred_ro_results))
+
 def fusion_mse_loss_weakstrong(y_true, y_pred, num_strong_probs):
     '''
     y_true - [traj,time,(qubit0,qubit1,meas_num0,meas_num1),meas_idx,(volt,[strong_probs],[true_params])]
@@ -405,6 +430,31 @@ def fusion_mse_loss_weakstrong(y_true, y_pred, num_strong_probs):
     strong_weight = 1.0
 
     return weak_loss + strong_weight*strong_loss
+
+def eval_model(model, data_x, data_y, num_steps, batch_size):
+  '''
+  Computes a list of loss and metric values shuffling the dataset with each step. This will
+  result in values for a different set of groups with each step
+
+  Input:
+  model - Keras model to evaluate (assumed to already be compiled with loss and metrics)
+  data_x, data_y - X and Y data for evaluation
+  num_steps - Number of shuffles to evaluate
+  batch_size - The number of dataset values per group
+
+  Output:
+  output_vals - A list of dictionaries of size num_steps that contains all loss and metric values
+  '''
+  # Compute the aggregate loss and metric
+  test_ds = tf.data.Dataset.from_tensor_slices((data_x, data_y))
+
+  output_vals = []
+  for step in range(num_steps):
+    test_shuff = test_ds.shuffle(data_x.shape[0]).batch(batch_size)
+    valdict = model.evaluate(test_shuff, batch_size=batch_size, return_dict=True)
+    output_vals += [valdict]
+
+  return output_vals
 
 def build_fusion_model(grp_size, seq_len, num_features, lstm_size, num_params):
     model = tf.keras.Sequential()
@@ -493,6 +543,44 @@ def param_metric_volt_xyz_trimmed_mse(y_true, y_pred):
     trim_idx = tf.cast(y_true.shape[0]/10, tf.int32)
     trim_range = tf.range(trim_idx,y_true.shape[0] - trim_idx)
     return tf.reduce_mean(tf.keras.metrics.mean_squared_error(tf.gather(y_true[:,-1,0,0,1:], trim_range, axis=0), tf.gather(y_pred[:,-1,0,2:,0], trim_range, axis=0)))
+
+def param_metric_shuffle_mse(y_true, y_pred):
+    '''
+    y_true - [group,param,time,(qubit0,qubit1,meas_num0,meas_num1),meas_idx,(volt,[strong_probs],[true_params])]
+    y_pred - [group,param,time,qubit,(mean,std,[strong_probs],[input_params]),meas_idx]
+    '''
+    y_true = tf.repeat(y_true[:1,...], tf.shape(y_pred)[0], axis=0)
+    return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true[:,:,-1,0,0,1:], y_pred[:,:,-1,0,2:,0]))
+
+def param_metric_shuffle_trimmed_mse(y_true, y_pred):
+    '''
+    y_true - [group,param,time,(qubit0,qubit1,meas_num0,meas_num1),meas_idx,(volt,[strong_probs],[true_params])]
+    y_pred - [group,param,time,qubit,(mean,std,[strong_probs],[input_params]),meas_idx]
+    '''
+    y_true = tf.repeat(y_true[:1,...], tf.shape(y_pred)[0], axis=0)
+    trim_idx = tf.cast(y_true.shape[1]/10, tf.int32)
+    trim_range = tf.range(trim_idx,y_true.shape[1] - trim_idx)
+    return tf.reduce_mean(tf.keras.metrics.mean_squared_error(tf.gather(y_true[:,:,-1,0,0,1:], trim_range, axis=1), tf.gather(y_pred[:,:,-1,0,2:,0], trim_range, axis=1)))
+
+def param_metric_shuffle_omega_trimmed_mse(y_true, y_pred):
+    '''
+    y_true - [group,param,time,(qubit0,qubit1,meas_num0,meas_num1),meas_idx,(volt,[strong_probs],[true_params])]
+    y_pred - [group,param,time,qubit,(mean,std,[strong_probs],[input_params]),meas_idx]
+    '''
+    y_true = tf.repeat(y_true[:1,...], tf.shape(y_pred)[0], axis=0)
+    trim_idx = tf.cast(y_true.shape[1]/10, tf.int32)
+    trim_range = tf.range(trim_idx,y_true.shape[1] - trim_idx)
+    return tf.reduce_mean(tf.keras.metrics.mean_squared_error(tf.gather(y_true[:,:,-1,0,0,-2], trim_range, axis=1), tf.gather(y_pred[:,:,-1,0,-2,0], trim_range, axis=1)))
+
+def param_metric_shuffle_eps_trimmed_mse(y_true, y_pred):
+    '''
+    y_true - [group,param,time,(qubit0,qubit1,meas_num0,meas_num1),meas_idx,(volt,[strong_probs],[true_params])]
+    y_pred - [group,param,time,qubit,(mean,std,[strong_probs],[input_params]),meas_idx]
+    '''
+    y_true = tf.repeat(y_true[:1,...], tf.shape(y_pred)[0], axis=0)
+    trim_idx = tf.cast(y_true.shape[1]/10, tf.int32)
+    trim_range = tf.range(trim_idx,y_true.shape[1] - trim_idx)
+    return tf.reduce_mean(tf.keras.metrics.mean_squared_error(tf.gather(y_true[:,:,-1,0,0,-1], trim_range, axis=1), tf.gather(y_pred[:,:,-1,0,-1,0], trim_range, axis=1)))
 
 def param_metric_weakstrong(y_true, y_pred, num_strong_probs):
     '''
