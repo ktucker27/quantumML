@@ -123,8 +123,8 @@ def main():
     test_y = tf.transpose(test_y, perm=[1,0,2,3,4])
     train_params = tf.repeat(train_params, num_train_groups, axis=0)
     test_params = tf.tile(valid_params[tf.newaxis,:], multiples=[num_test_groups*num_per_group,1])
-    valid_params = tf.repeat(valid_params, num_valid_groups, axis=0)
     eval_valid_params = tf.tile(valid_params[tf.newaxis,:], multiples=[num_valid_groups*num_per_group,1])
+    valid_params = tf.repeat(valid_params, num_valid_groups, axis=0)
 
     # Train like denoising autoencoder solving for single Omega
     omega = 1.395
