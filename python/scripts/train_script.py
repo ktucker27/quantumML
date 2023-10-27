@@ -20,15 +20,16 @@ from tensorflow.random import set_seed
 from tensorflow.keras import backend as K
 #from keras.layers.preprocessing import preprocessing_utils
 
-sys.path.append('../sdes')
+currpath = os.path.dirname(os.path.realpath(__file__))
+sys.path.append(os.path.join(currpath,'../sdes'))
 import sde_solve
 import sde_systems
 import data_gen
 
-sys.path.append('../systems')
+sys.path.append(os.path.join(currpath,'../systems'))
 import rabi_weak_meas
 
-sys.path.append('../models')
+sys.path.append(os.path.join(currpath,'../models'))
 import fusion
 import flex
 
