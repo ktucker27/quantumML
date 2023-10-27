@@ -51,7 +51,7 @@ def main():
     voltage_dir = args.datapath
 
     voltage = tf.saved_model.load(voltage_dir)
-    epsilons = voltage[...,0,:]
+    epsilons = np.arange(0.0, 2.0, 0.05)
 
     voltage = voltage[...,0,:]
     voltage = tf.concat([voltage, 0.0*tf.ones_like(voltage)[...,:1,:], 1.0*tf.ones_like(voltage)[...,:1,:]], axis=3)
@@ -122,9 +122,9 @@ def main():
 
     # Train like denoising autoencoder solving for single Omega
     omega = 1.395
-    train_y = tf.concat([train_y[...,tf.newaxis], 0.0*tf.ones_like(train_y[...,tf.newaxis])*omega, 0.0*tf.ones_like(train_y[...,tf.newaxis])*train_params[:,tf.newaxis,tf.newaxis,tf.newaxis,tf.newaxis]], axis=-1)
-    valid_y = tf.concat([valid_y[...,tf.newaxis], 0.0*tf.ones_like(valid_y[...,tf.newaxis])*omega, 0.0*tf.ones_like(valid_y[...,tf.newaxis])*valid_params[:,tf.newaxis,tf.newaxis,tf.newaxis,tf.newaxis]], axis=-1)
-    test_y = tf.concat([test_y[...,tf.newaxis], 0.0*tf.ones_like(test_y[...,tf.newaxis])*omega, 0.0*tf.ones_like(test_y[...,tf.newaxis])*test_params[:,tf.newaxis,tf.newaxis,tf.newaxis,tf.newaxis]], axis=-1)
+    train_y = tf.concat([train_y[...,tf.newaxis], tf.ones_like(train_y[...,tf.newaxis])*omega, tf.ones_like(train_y[...,tf.newaxis])*train_params[:,tf.newaxis,tf.newaxis,tf.newaxis,tf.newaxis]], axis=-1)
+    valid_y = tf.concat([valid_y[...,tf.newaxis], tf.ones_like(valid_y[...,tf.newaxis])*omega, tf.ones_like(valid_y[...,tf.newaxis])*valid_params[:,tf.newaxis,tf.newaxis,tf.newaxis,tf.newaxis]], axis=-1)
+    test_y = tf.concat([test_y[...,tf.newaxis], tf.ones_like(test_y[...,tf.newaxis])*omega, tf.ones_like(test_y[...,tf.newaxis])*test_params[:,tf.newaxis,tf.newaxis,tf.newaxis,tf.newaxis]], axis=-1)
 
     # Keep the real parts of the data only
     train_x = np.real(train_x)
@@ -160,11 +160,12 @@ def main():
     savehist = True
     savemodel = True
 
-    historydir = os.path.join(args.outdir,'/4K_4K_dt2pm8/histories/')
+    historydir = os.path.join(args.outdir,'4K_4K_dt2pm8/histories/')
+    print(historydir, args.outdir) 
     if not os.path.exists(historydir):
         os.makedirs(historydir)
     
-    modeldir = os.path.join(args.outdir,'/4K_4K_dt2pm8/models/')
+    modeldir = os.path.join(args.outdir,'4K_4K_dt2pm8/models/')
     if not os.path.exists(modeldir):
         os.makedirs(modeldir)
 
