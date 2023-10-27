@@ -37,6 +37,8 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('datapath', help='Full path of the dataset')
     parser.add_argument('outdir', help='Output directory')
+    parser.add_argument('--group_size', required=True, type=int, help='Number of trajectories per group')
+    parser.add_argument('--num_train_groups', required=True, type=int, help='Number of groups to use in training set')
     parser.add_argument('--seed', required=False, default=0, type=int, help='Random seed to use for the run')
     return parser.parse_args()
 
@@ -69,7 +71,7 @@ def main():
     print('deltat:', deltat)
 
     # Reshape to get voltage batches
-    group_size = 4000
+    group_size = args.group_size
     num_per_group = int(group_size/100)
     all_x = tf.reshape(voltage,[voltage.shape[0], -1, num_per_group, voltage.shape[2], voltage.shape[3], voltage.shape[4]])
 
@@ -84,7 +86,7 @@ def main():
     _, eval_valid_x, _, _ = fusion.split_data(voltage.numpy(), voltage.numpy(), train_frac)
 
     # Reduce the training to the requested number of groups and average the
-    num_train_groups = 1
+    num_train_groups = args.num_train_groups
     train_x = train_x[:,:num_train_groups,...]
     train_y = tf.repeat(tf.reduce_mean(train_x, axis=1)[:,tf.newaxis,...], num_train_groups, axis=1)
 
@@ -166,16 +168,16 @@ def main():
     lr = 3e-3
     dr = 0.99
 
-    perform_eval = False
+    perform_eval = True
     savehist = True
     savemodel = True
 
-    historydir = os.path.join(args.outdir,'4K_4K_dt2pm8/histories/')
+    historydir = os.path.join(args.outdir,'histories/')
     print(historydir, args.outdir) 
     if not os.path.exists(historydir):
         os.makedirs(historydir)
     
-    modeldir = os.path.join(args.outdir,'4K_4K_dt2pm8/models/')
+    modeldir = os.path.join(args.outdir,'models/')
     if not os.path.exists(modeldir):
         os.makedirs(modeldir)
 
@@ -278,8 +280,47 @@ def main():
                                 callbacks=[lrscheduler])
 
         if perform_eval:
+          # Build the shuffle model
+          phys_layer_idx = -6
+          params_per_group = eval_valid_x.shape[1]
+          shuffle_model = flex.build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lstm_size, dec_lstm_size, td_sizes, encoder_sizes, num_params,
+                                                         rho0, params, deltat, num_traj, start_meas, comp_iq=comp_iq, max_val=max_val, offset=offset,
+                                                         strong_probs=strong_probs, project_rho=project_rho, strong_probs_input=strong_probs_input,
+                                                         input_params=input_params, num_per_group=num_per_group, params_per_group=params_per_group)
+
+          loss_func = fusion.fusion_mse_loss_shuffle
+          all_metrics = []
+
+          for layer in shuffle_model.layers:
+            layer.trainable = True
+          shuffle_model.layers[phys_layer_idx].trainable = train_decoder
+          shuffle_model.layers[phys_layer_idx].cell.trainable = train_decoder
+          shuffle_model.layers[phys_layer_idx].cell.flex.a_cell_real.trainable = train_decoder
+          shuffle_model.layers[phys_layer_idx].cell.flex.a_cell_imag.trainable = train_decoder
+          shuffle_model.layers[phys_layer_idx].cell.flex.b_cell_real.trainable = train_decoder
+          shuffle_model.layers[phys_layer_idx].cell.flex.b_cell_imag.trainable = train_decoder
+          shuffle_model.layers[phys_layer_idx].cell.flex.a_dense_real.trainable = train_decoder
+          shuffle_model.layers[phys_layer_idx].cell.flex.a_dense_imag.trainable = train_decoder
+          shuffle_model.layers[phys_layer_idx].cell.flex.b_dense_real.trainable = train_decoder
+          shuffle_model.layers[phys_layer_idx].cell.flex.b_dense_imag.trainable = train_decoder
+
+          fusion.compile_model(shuffle_model, loss_func, metrics=all_metrics)
+
+          # Copy the weights into the shuffle model
+          for val_idx, val in enumerate(model.trainable_weights):
+             shuffle_model.trainable_weights[val_idx].assign(val)
+          
+          # Set the metric functions
+          metric_func = fusion.param_metric_shuffle_mse
+          omega_metric_func = fusion.param_metric_shuffle_omega_trimmed_mse
+          eps_metric_func = fusion.param_metric_shuffle_eps_trimmed_mse
+
+          trimmed_metric_func = fusion.param_metric_shuffle_trimmed_mse
+          all_metrics = [metric_func, trimmed_metric_func, omega_metric_func, eps_metric_func]
+          fusion.compile_model(shuffle_model, loss_func, metrics=all_metrics)
+
           # Get the valid metric
-          valid_vals = fusion.eval_model(model, eval_valid_x, eval_valid_y, num_eval_steps, num_per_group)
+          valid_vals = fusion.eval_model(shuffle_model, eval_valid_x, eval_valid_y, num_eval_steps, num_per_group)
           vlosses = []
           vmetrics = []
           for d in valid_vals:
@@ -289,7 +330,7 @@ def main():
           print(f'Valid metric for run {train_idx}: {np.mean(vmetrics):.3g}')
 
           # Get the test metric
-          test_vals = fusion.eval_model(model, test_x, test_y, num_eval_steps, num_per_group)
+          test_vals = fusion.eval_model(shuffle_model, test_x, test_y, num_eval_steps, num_per_group)
           tlosses = []
           tmetrics = []
           for d in test_vals:
