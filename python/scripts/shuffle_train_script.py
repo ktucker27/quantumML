@@ -39,7 +39,9 @@ def parse_args():
     parser.add_argument('outdir', help='Output directory')
     parser.add_argument('--group_size', required=True, type=int, help='Number of trajectories per group')
     parser.add_argument('--num_train_groups', required=True, type=int, help='Number of groups to use in training set')
+    parser.add_argument('--groups_per_mb', required=False, default=1, type=int, help='Number of groups per minibatch')
     parser.add_argument('--seed', required=False, default=0, type=int, help='Random seed to use for the run')
+
     return parser.parse_args()
 
 def main():
@@ -88,9 +90,9 @@ def main():
     train_y = tf.repeat(tf.reduce_mean(train_x, axis=1)[:,tf.newaxis,...], num_train_groups*num_per_group, axis=1)
 
     # Split the validation data into valid and test
-    num_groups = valid_x.shape[1]
-    test_x = eval_valid_x[:,int(num_groups*num_per_group/2):,...] # Test is back half
-    eval_valid_x = eval_valid_x[:,:int(num_groups*num_per_group/2),...] # Valid is first half
+    num_valid_elms = valid_x.shape[1]
+    test_x = valid_x[:,int(num_valid_elms/2):,...] # Test is back half
+    valid_x = valid_x[:,:int(num_valid_elms/2),...] # Valid is first half
 
     # Validation set size should be half the training set size, unless they are both one
     if valid_x.shape[1] > num_train_groups*num_per_group/2:
@@ -113,8 +115,8 @@ def main():
     test_x = tf.transpose(test_x, perm=[1,0,2,3,4])
     test_y = tf.transpose(test_y, perm=[1,0,2,3,4])
     train_params = tf.tile(train_params[tf.newaxis,:], multiples=[num_train_groups*num_per_group,1])
-    valid_params = tf.tile(valid_params[tf.newaxis,:], multiples=[num_valid_groups*num_per_group,1])
     test_params = tf.tile(valid_params[tf.newaxis,:], multiples=[num_test_groups*num_per_group,1])
+    valid_params = tf.tile(valid_params[tf.newaxis,:], multiples=[num_valid_groups*num_per_group,1])
 
     # Train like denoising autoencoder solving for single Omega
     omega = 1.395
@@ -127,8 +129,6 @@ def main():
     train_y = np.real(train_y)
     valid_x = np.real(valid_x)
     valid_y = np.real(valid_y)
-    eval_valid_x = np.real(eval_valid_x)
-    eval_valid_y = np.real(eval_valid_y)
     test_x = np.real(test_x)
     test_y = np.real(test_y)
 
@@ -147,7 +147,7 @@ def main():
     num_runs = 1
     start_run_idx = args.seed
 
-    groups_per_minibatch = 1
+    groups_per_minibatch = args.groups_per_mb
     phys_layer_idx = -6
     verbose_level = 1
     mini_batch_size = num_per_group*groups_per_minibatch
@@ -264,7 +264,7 @@ def main():
 
         if perform_eval:
           # Get the valid metric
-          valid_vals = fusion.eval_model(model, eval_valid_x, eval_valid_y, num_eval_steps, num_per_group)
+          valid_vals = fusion.eval_model(model, valid_x, valid_y, num_eval_steps, num_per_group)
           vlosses = []
           vmetrics = []
           for d in valid_vals:
