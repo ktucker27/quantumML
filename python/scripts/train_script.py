@@ -165,6 +165,7 @@ def main():
     lr = 3e-3
     dr = 0.99
 
+    perform_eval = False
     savehist = True
     savemodel = True
 
@@ -275,25 +276,26 @@ def main():
                                 validation_data=(valid_x, valid_y), verbose=verbose_level, shuffle=True,
                                 callbacks=[lrscheduler])
 
-        # Get the valid metric
-        valid_vals = fusion.eval_model(model, eval_valid_x, eval_valid_y, num_eval_steps, num_per_group)
-        vlosses = []
-        vmetrics = []
-        for d in valid_vals:
-            vlosses += [d['loss']]
-            vmetrics += [d['param_metric_shuffle_trimmed_mse']]
-        valid_metrics += [valid_vals]
-        print(f'Valid metric for run {train_idx}: {np.mean(vmetrics):.3g}')
+        if perform_eval:
+          # Get the valid metric
+          valid_vals = fusion.eval_model(model, eval_valid_x, eval_valid_y, num_eval_steps, num_per_group)
+          vlosses = []
+          vmetrics = []
+          for d in valid_vals:
+              vlosses += [d['loss']]
+              vmetrics += [d['param_metric_shuffle_trimmed_mse']]
+          valid_metrics += [valid_vals]
+          print(f'Valid metric for run {train_idx}: {np.mean(vmetrics):.3g}')
 
-        # Get the test metric
-        test_vals = fusion.eval_model(model, test_x, test_y, num_eval_steps, num_per_group)
-        tlosses = []
-        tmetrics = []
-        for d in test_vals:
-            tlosses += [d['loss']]
-            tmetrics += [d['param_metric_shuffle_trimmed_mse']]
-        test_metrics += [test_vals]
-        print(f'Test metric for run {train_idx}: {np.mean(tmetrics):.3g}')
+          # Get the test metric
+          test_vals = fusion.eval_model(model, test_x, test_y, num_eval_steps, num_per_group)
+          tlosses = []
+          tmetrics = []
+          for d in test_vals:
+              tlosses += [d['loss']]
+              tmetrics += [d['param_metric_shuffle_trimmed_mse']]
+          test_metrics += [test_vals]
+          print(f'Test metric for run {train_idx}: {np.mean(tmetrics):.3g}')
 
         if first_run:
           history = run_history
