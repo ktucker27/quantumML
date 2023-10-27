@@ -69,68 +69,73 @@ def main():
 
     # Reshape to get voltage batches
     group_size = 4000
-    num_per_group = 1
-    all_x = tf.reshape(voltage,[voltage.shape[0], -1, int(group_size/100), voltage.shape[2], voltage.shape[3], voltage.shape[4]])
+    num_per_group = int(group_size/100)
+    all_x = tf.reshape(voltage,[voltage.shape[0], -1, num_per_group, voltage.shape[2], voltage.shape[3], voltage.shape[4]])
 
     all_x_mean = tf.reduce_mean(tf.math.real(all_x), axis=2)
     all_y = all_x_mean
 
     # Split the voltages
     train_frac = 0.5
-    train_x, valid_x, train_y, valid_y = fusion.split_data(all_x_mean.numpy(), all_y.numpy(), train_frac)
+    train_x, valid_x, _, _ = fusion.split_data(all_x_mean.numpy(), all_y.numpy(), train_frac)
     _, _, train_params, valid_params = fusion.split_data(all_x_mean.numpy(), epsilons, train_frac)
+
+    _, eval_valid_x, _, _ = fusion.split_data(voltage.numpy(), voltage.numpy(), train_frac)
 
     # Reduce the training to the requested number of groups and average the
     num_train_groups = 1
     train_x = train_x[:,:num_train_groups,...]
-    train_y = train_y[:,:num_train_groups,...]
     train_y = tf.repeat(tf.reduce_mean(train_x, axis=1)[:,tf.newaxis,...], num_train_groups, axis=1)
 
     # Split the validation data into valid and test
     num_groups = valid_x.shape[1]
-    test_x = valid_x[:,int(num_groups/2):,...] # Test is back half
-    test_y = valid_y[:,int(num_groups/2):,...]
-    valid_x = valid_x[:,:int(num_groups/2),...] # Valid is first half
-    valid_y = valid_y[:,:int(num_groups/2),...]
+    test_x = eval_valid_x[:,int(num_groups*num_per_group/2):,...] # Test is back half
+    eval_valid_x = eval_valid_x[:,:int(num_groups*num_per_group/2),...] # Valid is first half
 
     # Validation set size should be half the training set size, unless they are both one
     if valid_x.shape[1] > num_train_groups/2:
         if num_train_groups >= 2:
             valid_x = valid_x[:,:int(num_train_groups/2),...]
-            valid_y = valid_y[:,:int(num_train_groups/2),...]
+            eval_valid_x = eval_valid_x[:,:int(num_train_groups*num_per_group/2),...]
         else:
             valid_x = valid_x[:,:num_train_groups,...]
-            valid_y = valid_y[:,:num_train_groups,...]
-        num_groups = valid_x.shape[1]
+            eval_valid_x = eval_valid_x[:,:num_train_groups*num_per_group,...]
 
     num_valid_groups = valid_x.shape[1]
-    num_test_groups = test_x.shape[1]
+    num_test_groups = int(test_x.shape[1]/num_per_group)
 
     # Using x means as y data
     valid_y = tf.repeat(tf.reduce_mean(valid_x, axis=1)[:,tf.newaxis,...], num_valid_groups, axis=1)
-    test_y = tf.repeat(tf.reduce_mean(test_x, axis=1)[:,tf.newaxis,...], num_test_groups, axis=1)
+    eval_valid_y = tf.repeat(tf.reduce_mean(eval_valid_x, axis=1)[:,tf.newaxis,...], num_valid_groups*num_per_group, axis=1)
+    test_y = tf.repeat(tf.reduce_mean(test_x, axis=1)[:,tf.newaxis,...], num_test_groups*num_per_group, axis=1)
 
     train_x = tf.reshape(train_x, [-1, train_x.shape[2], train_x.shape[3], train_x.shape[4]])
     train_y = tf.reshape(train_y, [-1, train_y.shape[2], train_y.shape[3], train_y.shape[4]])
     valid_x = tf.reshape(valid_x, [-1, valid_x.shape[2], valid_x.shape[3], valid_x.shape[4]])
     valid_y = tf.reshape(valid_y, [-1, valid_y.shape[2], valid_y.shape[3], valid_y.shape[4]])
-    test_x = tf.reshape(test_x, [-1, test_x.shape[2], test_x.shape[3], test_x.shape[4]])
-    test_y = tf.reshape(test_y, [-1, test_y.shape[2], test_y.shape[3], test_y.shape[4]])
+    eval_valid_x = tf.transpose(eval_valid_x, perm=[1,0,2,3,4])
+    eval_valid_y = tf.transpose(eval_valid_y, perm=[1,0,2,3,4])
+    test_x = tf.transpose(test_x, perm=[1,0,2,3,4])
+    test_y = tf.transpose(test_y, perm=[1,0,2,3,4])
     train_params = tf.repeat(train_params, num_train_groups, axis=0)
-    test_params = tf.repeat(valid_params, num_test_groups, axis=0)
+    test_params = tf.tile(valid_params[tf.newaxis,:], multiples=[num_test_groups*num_per_group,1])
     valid_params = tf.repeat(valid_params, num_valid_groups, axis=0)
+    eval_valid_params = tf.tile(valid_params[tf.newaxis,:], multiples=[num_valid_groups*num_per_group,1])
 
     # Train like denoising autoencoder solving for single Omega
     omega = 1.395
     train_y = tf.concat([train_y[...,tf.newaxis], tf.ones_like(train_y[...,tf.newaxis])*omega, tf.ones_like(train_y[...,tf.newaxis])*train_params[:,tf.newaxis,tf.newaxis,tf.newaxis,tf.newaxis]], axis=-1)
     valid_y = tf.concat([valid_y[...,tf.newaxis], tf.ones_like(valid_y[...,tf.newaxis])*omega, tf.ones_like(valid_y[...,tf.newaxis])*valid_params[:,tf.newaxis,tf.newaxis,tf.newaxis,tf.newaxis]], axis=-1)
-    test_y = tf.concat([test_y[...,tf.newaxis], tf.ones_like(test_y[...,tf.newaxis])*omega, tf.ones_like(test_y[...,tf.newaxis])*test_params[:,tf.newaxis,tf.newaxis,tf.newaxis,tf.newaxis]], axis=-1)
+    eval_valid_y = tf.concat([eval_valid_y[...,tf.newaxis], tf.ones_like(eval_valid_y[...,tf.newaxis])*omega, tf.ones_like(eval_valid_y[...,tf.newaxis])*eval_valid_params[:,:,tf.newaxis,tf.newaxis,tf.newaxis,tf.newaxis]], axis=-1)
+    test_y = tf.concat([test_y[...,tf.newaxis], tf.ones_like(test_y[...,tf.newaxis])*omega, tf.ones_like(test_y[...,tf.newaxis])*test_params[:,:,tf.newaxis,tf.newaxis,tf.newaxis,tf.newaxis]], axis=-1)
 
     # Keep the real parts of the data only
     train_x = np.real(train_x)
     train_y = np.real(train_y)
     valid_x = np.real(valid_x)
     valid_y = np.real(valid_y)
+    eval_valid_x = np.real(eval_valid_x)
+    eval_valid_y = np.real(eval_valid_y)
     test_x = np.real(test_x)
     test_y = np.real(test_y)
 
@@ -141,6 +146,9 @@ def main():
     print(valid_x.shape)
     print(valid_y.shape)
     print(valid_params.shape)
+    print(eval_valid_x.shape)
+    print(eval_valid_y.shape)
+    print(eval_valid_params.shape)
     print(test_x.shape)
     print(test_y.shape)
     print(test_params.shape)
@@ -268,7 +276,7 @@ def main():
                                 callbacks=[lrscheduler])
 
         # Get the valid metric
-        valid_vals = fusion.eval_model(model, valid_x, valid_y, num_eval_steps, num_per_group)
+        valid_vals = fusion.eval_model(model, eval_valid_x, eval_valid_y, num_eval_steps, num_per_group)
         vlosses = []
         vmetrics = []
         for d in valid_vals:
