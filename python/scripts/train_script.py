@@ -39,6 +39,7 @@ def parse_args():
     parser.add_argument('outdir', help='Output directory')
     parser.add_argument('--group_size', required=True, type=int, help='Number of trajectories per group')
     parser.add_argument('--num_train_groups', required=True, type=int, help='Number of groups to use in training set')
+    parser.add_argument('--mb_size', required=False, default=20, type=int, help='Minibatch size')
     parser.add_argument('--seed', required=False, default=0, type=int, help='Random seed to use for the run')
     return parser.parse_args()
 
@@ -161,7 +162,7 @@ def main():
     start_run_idx = args.seed
 
     verbose_level = 1
-    mini_batch_size = 20
+    mini_batch_size = args.mb_size
     num_epochs = [100, 100, 100]
     num_training_runs = len(num_epochs)
     num_eval_steps = 100
