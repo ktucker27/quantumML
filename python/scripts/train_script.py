@@ -36,12 +36,12 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('datapath', help='Full path of the dataset')
     parser.add_argument('outdir', help='Output directory')
+    parser.add_argument('--seed', required=False, default=0, type=int, help='Random seed to use for the run')
     return parser.parse_args()
 
 def main():
     # Parse arguments
     args = parse_args()
-    print(args.datapath, args.outdir)
 
     # Load large dataset averaged over 10 runs
     mint = 0
@@ -155,7 +155,7 @@ def main():
 
     # Set run parameters
     num_runs = 1
-    start_run_idx = 30
+    start_run_idx = args.seed
 
     verbose_level = 1
     mini_batch_size = 20
