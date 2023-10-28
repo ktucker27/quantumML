@@ -62,7 +62,7 @@ def main():
 
     if args.clean:
       print('Input data is noise free')
-      voltage = voltage[:,tf.newaxis,...,:2,:]
+      voltage = tf.math.real(voltage[:,tf.newaxis,...,:2,:])
     else:
       voltage = voltage[...,0,:]
     voltage = tf.concat([voltage, 0.0*tf.ones_like(voltage)[...,:1,:], 0.0*tf.ones_like(voltage)[...,:1,:]], axis=3)
@@ -105,8 +105,11 @@ def main():
 
     # Split the validation data into valid and test
     num_valid_elms = valid_x.shape[1]
-    test_x = valid_x[:,int(num_valid_elms/2):,...] # Test is back half
-    valid_x = valid_x[:,:int(num_valid_elms/2),...] # Valid is first half
+    if args.clean:
+      test_x = valid_x
+    else:
+      test_x = valid_x[:,int(num_valid_elms/2):,...] # Test is back half
+      valid_x = valid_x[:,:int(num_valid_elms/2),...] # Valid is first half
 
     # Validation set size should be half the training set size, unless they are both one
     if valid_x.shape[1] > num_train_groups*num_per_group/2:
