@@ -42,7 +42,7 @@ def parse_args():
     parser.add_argument('--groups_per_mb', required=False, default=1, type=int, help='Number of groups per minibatch')
     parser.add_argument('--seed', required=False, default=0, type=int, help='Random seed to use for the run')
     parser.add_argument('--stride', required=False, default=1, type=int, help='Time stride for cutting data file')
-    parser.add_argument('--clean', required=False, default=False, type=bool, help='If true, input data is clean, not sampled')
+    parser.add_argument('--clean', action='store_true', help='If true, input data is clean, not sampled')
 
     return parser.parse_args()
 
