@@ -86,8 +86,8 @@ def main():
 
     # Split the voltages
     train_frac = 0.5
-    train_x, valid_x, _, _ = fusion.split_data(all_x.numpy(), all_y.numpy(), train_frac)
-    _, _, train_params, valid_params = fusion.split_data(all_x.numpy(), epsilons, train_frac)
+    train_x, valid_x, _, _ = fusion.split_data(all_x, all_y, train_frac)
+    _, _, train_params, valid_params = fusion.split_data(all_x, epsilons, train_frac)
 
     # Reduce the training to the requested number of groups and average the
     num_train_groups = args.num_train_groups
