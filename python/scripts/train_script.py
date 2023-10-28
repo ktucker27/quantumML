@@ -192,7 +192,7 @@ def main():
     encoder_sizes = [100, 50]
     enc_lstm_size = 32
     dec_lstm_size = 16
-    avg_size = 20
+    avg_size = max([1,int(20/args.stride)])
     num_traj = 1
     start_meas = 0.0
     comp_iq = True
