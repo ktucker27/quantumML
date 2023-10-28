@@ -160,7 +160,10 @@ def main():
     num_runs = 1
     start_run_idx = args.seed
 
-    groups_per_minibatch = args.groups_per_mb
+    if args.clean:
+      groups_per_minibatch = 1
+    else:
+      groups_per_minibatch = args.groups_per_mb
     phys_layer_idx = -6
     verbose_level = 1
     mini_batch_size = num_per_group*groups_per_minibatch
