@@ -60,7 +60,11 @@ def main():
     epsilons = np.arange(0.0, 2.0, 0.05)
 
     voltage = voltage[...,0,:]
-    voltage = tf.concat([voltage, 0.0*tf.ones_like(voltage)[...,:1,:], 1.0*tf.ones_like(voltage)[...,:1,:]], axis=3)
+    voltage = tf.concat([voltage, 0.0*tf.ones_like(voltage)[...,:1,:], 0.0*tf.ones_like(voltage)[...,:1,:]], axis=3)
+    voltage = voltage.numpy()
+    voltage[:,:,:,2:,0] = 0.0
+    voltage[:,:,:,2:,1] = 1.0
+    voltage[:,:,:,2:,2] = 2.0
 
     # Subsample in time
     stride = args.stride
@@ -119,11 +123,10 @@ def main():
     test_params = tf.tile(valid_params[tf.newaxis,:], multiples=[num_test_groups*num_per_group,1])
     valid_params = tf.tile(valid_params[tf.newaxis,:], multiples=[num_valid_groups*num_per_group,1])
 
-    # Train like denoising autoencoder solving for single Omega
-    omega = 1.395
-    train_y = tf.concat([train_y[...,tf.newaxis], tf.ones_like(train_y[...,tf.newaxis])*omega, tf.ones_like(train_y[...,tf.newaxis])*train_params[:,:,tf.newaxis,tf.newaxis,tf.newaxis,tf.newaxis]], axis=-1)
-    valid_y = tf.concat([valid_y[...,tf.newaxis], tf.ones_like(valid_y[...,tf.newaxis])*omega, tf.ones_like(valid_y[...,tf.newaxis])*valid_params[:,:,tf.newaxis,tf.newaxis,tf.newaxis,tf.newaxis]], axis=-1)
-    test_y = tf.concat([test_y[...,tf.newaxis], tf.ones_like(test_y[...,tf.newaxis])*omega, tf.ones_like(test_y[...,tf.newaxis])*test_params[:,:,tf.newaxis,tf.newaxis,tf.newaxis,tf.newaxis]], axis=-1)
+    # Train like denoising autoencoder
+    train_y = tf.concat([train_y[...,tf.newaxis], tf.ones_like(train_y[...,tf.newaxis])*train_params[:,:,tf.newaxis,tf.newaxis,tf.newaxis,tf.newaxis]], axis=-1)
+    valid_y = tf.concat([valid_y[...,tf.newaxis], tf.ones_like(valid_y[...,tf.newaxis])*valid_params[:,:,tf.newaxis,tf.newaxis,tf.newaxis,tf.newaxis]], axis=-1)
+    test_y = tf.concat([test_y[...,tf.newaxis], tf.ones_like(test_y[...,tf.newaxis])*test_params[:,:,tf.newaxis,tf.newaxis,tf.newaxis,tf.newaxis]], axis=-1)
 
     # Keep the real parts of the data only
     train_x = np.real(train_x)
@@ -181,12 +184,12 @@ def main():
     num_traj = 1
     start_meas = 0.0
     comp_iq = True
-    project_rho = False
-    train_decoder = False
+    project_rho = True
+    train_decoder = True
     strong_probs = []
     strong_probs_input = True
-    input_params = [0,4]
-    num_params = 2
+    input_params = [4]
+    num_params = 1
 
     max_val = 12
     offset = 1
@@ -195,10 +198,10 @@ def main():
 
     # Starting with ZZ00 initial condition
     sx, sy, sz = sde_systems.paulis()
-    rho0 = sde_systems.get_init_rho(sx, sy, 0, 0)
+    rho0 = sde_systems.get_init_rho(sz, sz, 0, 0)
 
     # Set the parameter values (with an omega error)
-    params = np.array([1.395,4.0*2.0*0.83156,0.1469,0.0,0.1], dtype=np.double)
+    params = np.array([1.395,2.0*0.83156,0.1469,0.0,0.1], dtype=np.double)
 
     valid_metrics = []
     test_metrics = []

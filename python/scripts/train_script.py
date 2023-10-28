@@ -41,6 +41,8 @@ def parse_args():
     parser.add_argument('--num_train_groups', required=True, type=int, help='Number of groups to use in training set')
     parser.add_argument('--mb_size', required=False, default=20, type=int, help='Minibatch size')
     parser.add_argument('--seed', required=False, default=0, type=int, help='Random seed to use for the run')
+    parser.add_argument('--stride', required=False, default=1, type=int, help='Time stride for cutting data file')
+
     return parser.parse_args()
 
 def main():
@@ -61,7 +63,7 @@ def main():
     voltage = tf.concat([voltage, 0.0*tf.ones_like(voltage)[...,:1,:], 1.0*tf.ones_like(voltage)[...,:1,:]], axis=3)
 
     # Subsample in time
-    stride = 1
+    stride = args.stride
     voltage = voltage[:,:,::stride,...]
     #all_probs = all_probs[:,::stride,:]
 
