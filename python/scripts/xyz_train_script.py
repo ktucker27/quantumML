@@ -42,6 +42,7 @@ def parse_args():
     parser.add_argument('--groups_per_mb', required=False, default=1, type=int, help='Number of groups per minibatch')
     parser.add_argument('--seed', required=False, default=0, type=int, help='Random seed to use for the run')
     parser.add_argument('--stride', required=False, default=1, type=int, help='Time stride for cutting data file')
+    parser.add_argument('--clean', required=False, default=False, type=bool, help='If true, input data is clean, not sampled')
 
     return parser.parse_args()
 
@@ -59,7 +60,11 @@ def main():
     voltage = tf.saved_model.load(voltage_dir)
     epsilons = np.arange(0.0, 2.0, 0.05)
 
-    voltage = voltage[...,0,:]
+    if args.clean:
+      print('Input data is noise free')
+      voltage = voltage[:,tf.newaxis,...,:2,:]
+    else:
+      voltage = voltage[...,0,:]
     voltage = tf.concat([voltage, 0.0*tf.ones_like(voltage)[...,:1,:], 0.0*tf.ones_like(voltage)[...,:1,:]], axis=3)
     voltage = voltage.numpy()
     voltage[:,:,:,2:,0] = 0.0
@@ -78,9 +83,14 @@ def main():
     print('deltat:', deltat)
 
     # Reshape to get voltage batches
-    group_size = args.group_size
-    num_per_group = int(group_size/100)
-    num_groups = int(voltage.shape[1]/num_per_group)
+    if args.clean:
+      group_size = 1
+      num_per_group = 1
+      num_train_groups = 1
+    else:
+      group_size = args.group_size
+      num_per_group = int(group_size/100)
+      num_train_groups = args.num_train_groups
     all_x = voltage
     all_y = all_x
 
@@ -90,7 +100,6 @@ def main():
     _, _, train_params, valid_params = fusion.split_data(all_x, epsilons, train_frac)
 
     # Reduce the training to the requested number of groups and average the
-    num_train_groups = args.num_train_groups
     train_x = train_x[:,:num_train_groups*num_per_group,...]
     train_y = tf.repeat(tf.reduce_mean(train_x, axis=1)[:,tf.newaxis,...], num_train_groups*num_per_group, axis=1)
 
