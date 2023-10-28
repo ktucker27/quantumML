@@ -42,6 +42,7 @@ def parse_args():
     parser.add_argument('--groups_per_mb', required=False, default=1, type=int, help='Number of groups per minibatch')
     parser.add_argument('--seed', required=False, default=0, type=int, help='Random seed to use for the run')
     parser.add_argument('--stride', required=False, default=1, type=int, help='Time stride for cutting data file')
+    parser.add_argument('--dtpow', required=False, default=8, type=int, help='Default dt=2^-dtpow')
     parser.add_argument('--clean', action='store_true', help='If true, input data is clean, not sampled')
 
     return parser.parse_args()
@@ -53,7 +54,7 @@ def main():
     # Load large dataset averaged over 10 runs
     mint = 0
     maxt = 4.0
-    deltat = 2**(-8)
+    deltat = 2**(-args.dtpow)
     tvec = np.arange(mint,maxt,deltat)
     voltage_dir = args.datapath
 
@@ -78,7 +79,7 @@ def main():
 
     mint = 0
     maxt = 4.0
-    deltat = 2**(-8)*stride
+    deltat = 2**(-args.dtpow)*stride
     tvec = np.arange(mint,maxt,deltat)
     print('deltat:', deltat)
 
