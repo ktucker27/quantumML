@@ -232,10 +232,10 @@ def main():
 
       metric_func = fusion.param_metric_shuffle_mse
       trimmed_metric_func = fusion.param_metric_shuffle_trimmed_mse
-      omega_metric_func = fusion.param_metric_shuffle_omega_trimmed_mse
+      #omega_metric_func = fusion.param_metric_shuffle_omega_trimmed_mse
       eps_metric_func = fusion.param_metric_shuffle_eps_trimmed_mse
 
-      all_metrics = [metric_func, trimmed_metric_func, omega_metric_func, eps_metric_func]
+      all_metrics = [metric_func, trimmed_metric_func, eps_metric_func]
       fusion.compile_model(model, loss_func, metrics=all_metrics)
 
       for train_idx in range(num_training_runs):
