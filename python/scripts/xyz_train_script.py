@@ -166,14 +166,15 @@ def main():
 
     if args.clean:
       groups_per_minibatch = 1
+      num_eval_steps = 1
     else:
       groups_per_minibatch = args.groups_per_mb
+      num_eval_steps = 100
     phys_layer_idx = -6
     verbose_level = 1
     mini_batch_size = num_per_group*groups_per_minibatch
     num_epochs = [100, 100, 100]
     num_training_runs = len(num_epochs)
-    num_eval_steps = 100
     lr = 3e-3
     dr = 0.99
 
