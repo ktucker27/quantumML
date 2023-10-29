@@ -43,7 +43,9 @@ def parse_args():
     parser.add_argument('--seed', required=False, default=0, type=int, help='Random seed to use for the run')
     parser.add_argument('--stride', required=False, default=1, type=int, help='Time stride for cutting data file')
     parser.add_argument('--dtpow', required=False, default=8, type=int, help='Default dt=2^-dtpow')
+    parser.add_argument('--gamma_s', required=False, default=0.0, type=float, help='Decoder model value of gamma_s')
     parser.add_argument('--clean', action='store_true', help='If true, input data is clean, not sampled')
+    parser.add_argument('--flex', action='store_true', help='If true, decoder training is enabled')
 
     return parser.parse_args()
 
@@ -201,8 +203,8 @@ def main():
     num_traj = 1
     start_meas = 0.0
     comp_iq = True
-    project_rho = True
-    train_decoder = True
+    project_rho = args.flex
+    train_decoder = args.flex
     strong_probs = []
     strong_probs_input = True
     input_params = [4]
@@ -218,7 +220,7 @@ def main():
     rho0 = sde_systems.get_init_rho(sz, sz, 0, 0)
 
     # Set the parameter values (with an omega error)
-    params = np.array([1.395,2.0*0.83156,0.1469,0.0,0.1], dtype=np.double)
+    params = np.array([1.395,2.0*0.83156,0.1469,args.gamma_s,0.1], dtype=np.double)
 
     valid_metrics = []
     test_metrics = []
