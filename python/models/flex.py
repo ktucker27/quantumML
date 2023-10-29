@@ -50,10 +50,16 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     self.a_rnn_cell_imag = a_rnn_cell_imag
     self.b_rnn_cell_real = b_rnn_cell_real
     self.b_rnn_cell_imag = b_rnn_cell_imag
-    self.a_dense_real = tf.keras.layers.Dense(10, kernel_initializer='zeros', bias_initializer='zeros')
-    self.a_dense_imag = tf.keras.layers.Dense(10, kernel_initializer='zeros', bias_initializer='zeros')
-    self.b_dense_real = tf.keras.layers.Dense(10, kernel_initializer='zeros', bias_initializer='zeros')
-    self.b_dense_imag = tf.keras.layers.Dense(10, kernel_initializer='zeros', bias_initializer='zeros')
+    if project_rho:
+      self.a_dense_real = tf.keras.layers.Dense(10, kernel_initializer=tf.keras.initializers.RandomNormal(stddev=1e-5), bias_initializer='zeros')
+      self.a_dense_imag = tf.keras.layers.Dense(10, kernel_initializer=tf.keras.initializers.RandomNormal(stddev=1e-5), bias_initializer='zeros')
+      self.b_dense_real = tf.keras.layers.Dense(10, kernel_initializer='zeros', bias_initializer='zeros')
+      self.b_dense_imag = tf.keras.layers.Dense(10, kernel_initializer='zeros', bias_initializer='zeros')
+    else:
+      self.a_dense_real = tf.keras.layers.Dense(10, kernel_initializer='zeros', bias_initializer='zeros')
+      self.a_dense_imag = tf.keras.layers.Dense(10, kernel_initializer='zeros', bias_initializer='zeros')
+      self.b_dense_real = tf.keras.layers.Dense(10, kernel_initializer='zeros', bias_initializer='zeros')
+      self.b_dense_imag = tf.keras.layers.Dense(10, kernel_initializer='zeros', bias_initializer='zeros')
     a = sde_systems.RabiWeakMeasSDE.a
     b = sde_systems.RabiWeakMeasSDE.b
     self.zero_b = sde_systems.ZeroSDE.b
@@ -607,10 +613,16 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lst
   x = tf.keras.layers.RepeatVector(seq_len, input_shape=[num_params+3])(x)
 
   # Add the physical RNN layer
-  a_rnn_cell_real = tf.keras.layers.LSTMCell(dec_lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
-  a_rnn_cell_imag = tf.keras.layers.LSTMCell(dec_lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
-  b_rnn_cell_real = tf.keras.layers.LSTMCell(dec_lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
-  b_rnn_cell_imag = tf.keras.layers.LSTMCell(dec_lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+  if project_rho:
+    a_rnn_cell_real = tf.keras.layers.LSTMCell(dec_lstm_size, kernel_initializer=tf.keras.initializers.RandomNormal(stddev=1e-5), recurrent_initializer=tf.keras.initializers.RandomNormal(stddev=1e-5), bias_initializer='zeros')
+    a_rnn_cell_imag = tf.keras.layers.LSTMCell(dec_lstm_size, kernel_initializer=tf.keras.initializers.RandomNormal(stddev=1e-5), recurrent_initializer=tf.keras.initializers.RandomNormal(stddev=1e-5), bias_initializer='zeros')
+    b_rnn_cell_real = tf.keras.layers.LSTMCell(dec_lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+    b_rnn_cell_imag = tf.keras.layers.LSTMCell(dec_lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+  else:
+    a_rnn_cell_real = tf.keras.layers.LSTMCell(dec_lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+    a_rnn_cell_imag = tf.keras.layers.LSTMCell(dec_lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+    b_rnn_cell_real = tf.keras.layers.LSTMCell(dec_lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+    b_rnn_cell_imag = tf.keras.layers.LSTMCell(dec_lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
 
   dec_rnn_layer = tf.keras.layers.RNN(EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
                                                        maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
