@@ -59,11 +59,7 @@ def main():
     voltage = tf.saved_model.load(voltage_dir)
     omegas = voltage[:,0,0,0,2,0]
     epsilons = voltage[:,0,0,0,3,0]
-    fix_epsilon = 1.0
-    fix_omega = 1.395
-    eps_params = tf.stack([fix_omega*tf.ones(epsilons.shape, epsilons.dtype), epsilons], axis=1)
-    omega_params = tf.stack([omegas, fix_epsilon*tf.ones(omegas.shape, epsilons.dtype)], axis=1)
-    all_params = tf.concat([eps_params, omega_params], axis=0).numpy()
+    all_params = tf.concat([omegas[:,tf.newaxis], epsilons[:,tf.newaxis]], axis=1).numpy()
 
     voltage = voltage[...,0,:]
     voltage = tf.concat([voltage, 0.0*tf.ones_like(voltage)[...,:1,:], 1.0*tf.ones_like(voltage)[...,:1,:]], axis=3)
