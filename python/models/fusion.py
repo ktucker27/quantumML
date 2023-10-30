@@ -592,6 +592,43 @@ def param_metric_weakstrong(y_true, y_pred, num_strong_probs):
 def param_loss(y_true, y_pred):
     return tf.keras.metrics.mean_squared_error(y_true[:,0], y_pred[:,0])
 
+def param_loss_omega_eps_shuffle(y_true, y_pred):
+    '''
+    y_true - [group,param,(omega,eps)]
+    y_pred - [(param,group),(omega,eps)]
+    '''
+    y_pred = tf.reshape(y_pred, [tf.shape(y_true)[1],-1,tf.shape(y_pred)[1]])
+    y_pred = tf.transpose(y_pred, [1,0,2])
+    y_true = tf.repeat(y_true[:1,...], tf.shape(y_pred)[0], axis=0)
+    # Evaluate the loss for each sample
+    return tf.reduce_mean(tf.square(y_true - y_pred))
+
+def param_loss_omega_trimmed_shuffle(y_true, y_pred):
+    '''
+    y_true - [group,param,(omega,eps)]
+    y_pred - [(param,group),(omega,eps)]
+    '''
+    y_pred = tf.reshape(y_pred, [tf.shape(y_true)[1],-1,tf.shape(y_pred)[1]])
+    y_pred = tf.transpose(y_pred, [1,0,2])
+    y_true = tf.repeat(y_true[:1,...], tf.shape(y_pred)[0], axis=0)
+    trim_idx = tf.cast(y_true.shape[1]/10, tf.int32)
+    trim_range = tf.range(trim_idx,y_true.shape[1] - trim_idx)
+    # Evaluate the loss for each sample
+    return tf.reduce_mean(tf.square(tf.gather(y_true[...,0], trim_range, axis=1) - tf.gather(y_pred[...,0], trim_range, axis=1)))
+
+def param_loss_eps_trimmed_shuffle(y_true, y_pred):
+    '''
+    y_true - [group,param,(omega,eps)]
+    y_pred - [(param,group),(omega,eps)]
+    '''
+    y_pred = tf.reshape(y_pred, [tf.shape(y_true)[1],-1,tf.shape(y_pred)[1]])
+    y_pred = tf.transpose(y_pred, [1,0,2])
+    y_true = tf.repeat(y_true[:1,...], tf.shape(y_pred)[0], axis=0)
+    trim_idx = tf.cast(y_true.shape[1]/10, tf.int32)
+    trim_range = tf.range(trim_idx,y_true.shape[1] - trim_idx)
+    # Evaluate the loss for each sample
+    return tf.reduce_mean(tf.square(tf.gather(y_true[...,-1], trim_range, axis=1) - tf.gather(y_pred[...,-1], trim_range, axis=1)))
+
 def param_loss_mp(y_true, y_pred):
     return tf.keras.metrics.mean_squared_error(tf.reshape(y_true,[-1]), tf.reshape(y_pred,[-1]))
 
