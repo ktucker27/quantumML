@@ -240,10 +240,6 @@ def main():
                                              strong_probs=strong_probs, project_rho=project_rho, strong_probs_input=strong_probs_input,
                                              input_params=input_params, num_per_group=num_per_group, params_per_group=params_per_group)
 
-      model.summary()
-
-      print(model.trainable_weights)
-
       loss_func = fusion.fusion_mse_loss_shuffle
 
       metric_func = fusion.param_metric_shuffle_mse
@@ -272,6 +268,9 @@ def main():
           model.layers[phys_layer_idx].cell.flex.b_dense_imag.trainable = train_decoder
 
           fusion.compile_model(model, loss_func, metrics=all_metrics)
+
+          model.summary()
+          print(model.trainable_weights)
 
         lrscheduler = tf.keras.callbacks.LearningRateScheduler(tf.keras.optimizers.schedules.ExponentialDecay(
             initial_learning_rate=lr,
