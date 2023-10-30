@@ -56,8 +56,7 @@ def main():
     deltat = 2**(-8)
     tvec = np.arange(mint,maxt,deltat)
 
-    datapath = '/content/gdrive/MyDrive/Research/QML/models/xy_xy00_omega_eps/omega_eps_XY00_kappa0x4_eta0_grp100_N40_T4_dt2em8_xy_avg100_32K'
-    voltage_dir = datapath + '/voltage'
+    voltage_dir = args.datapath
     voltage = tf.saved_model.load(voltage_dir)
     if args.clean:
       print('Input data is noise free')
