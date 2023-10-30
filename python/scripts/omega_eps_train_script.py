@@ -60,8 +60,8 @@ def main():
     voltage = tf.saved_model.load(voltage_dir)
     if args.clean:
       print('Input data is noise free')
-      omegas = voltage[:,0,2,0]
-      epsilons = voltage[:,0,3,0]
+      omegas = tf.math.real(voltage[:,0,2,0])
+      epsilons = tf.math.real(voltage[:,0,3,0])
       voltage = tf.math.real(voltage[:,tf.newaxis,...,:2,:])
     else:
       omegas = voltage[:,0,0,0,2,0]
