@@ -773,7 +773,7 @@ class RabiWeakMeasSDE:
             if j == 0:
                 x_out = pten2*hi
             else:
-                x_out = pten2*tf.concat([x_out, hi], axis=2)
+                x_out = tf.concat([x_out, pten2*hi], axis=2)
 
         return x_out
 
