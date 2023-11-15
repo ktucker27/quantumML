@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+import qutip as qt
 import scipy
 import os
 import sys
@@ -140,6 +141,15 @@ def init_probs_from_truth(truth_probs):
 
     return return_dict
 
+def diff_to_volt(diff, deltat):
+  volt = np.zeros_like(diff.numpy())
+  for tidx in range(diff.shape[-2]):
+    if tidx < diff.shape[-2] - 1:
+      volt[...,tidx+1,:] = volt[...,tidx,:] + deltat*diff[...,tidx,:]
+    else:
+      volt = np.concatenate([volt, volt[...,tidx:tidx+1,:] + deltat*diff[...,tidx:tidx+1,:]], axis=-2)
+  return volt
+
 class TestLiouv(unittest.TestCase):
     def test_liouv_vs_truth_files(self):
         tol = 1e-12
@@ -243,6 +253,101 @@ class TestRunModel2d(unittest.TestCase):
             mse = tf.reduce_mean(tf.pow(tf.math.real(tf.reduce_mean(probs, axis=0) - probs_truth), 2.0))
             print(f'MSE: {mse}')
             self.assertLessEqual(mse, tol)
+
+    def test_r2d_vs_qutip(self):
+        tol = 1e-2
+
+        mint = 0.0
+        maxt = 1.0
+        deltat = 2**(-8)
+        tvec = np.arange(mint,maxt,deltat)
+
+        omega = 1.395
+        kappa = 4.0*0.83156
+        eta = 0.1469
+        gamma_s = 0.0
+        epsilons = np.arange(0.0, 2.01, 0.5)
+        num_traj=1000
+        meas_op = [0,1]
+        input_params = [4]
+
+        sx, sy, _ = sde_systems.paulis()
+        rho0 = sde_systems.get_init_rho(sx, sy, 0, 0)[tf.newaxis,...]
+
+        for eps in epsilons:
+            print(f'epsilon = {eps}')
+
+            # Run QuTiP
+            sx0 = qt.tensor(qt.sigmax(), qt.identity(2))
+            sx1 = qt.tensor(qt.identity(2), qt.sigmax())
+            sy0 = qt.tensor(qt.sigmay(), qt.identity(2))
+            sy1 = qt.tensor(qt.identity(2), qt.sigmay())
+            sz0 = qt.tensor(qt.sigmaz(), qt.identity(2))
+            szz = qt.tensor(qt.sigmaz(), qt.sigmaz())
+
+            H = 0.5*omega*(sx0 + sx1) + eps*szz
+
+            xup = (1.0/np.sqrt(2.0))*(qt.basis(2,0) + qt.basis(2,1))
+            yup = (1.0/np.sqrt(2.0))*(qt.basis(2,0) + 1j*qt.basis(2,1))
+            psi0 = qt.tensor(xup, yup)
+            qtrho0 = psi0*psi0.dag()
+
+            result = qt.smesolve(H, qtrho0, tvec,
+                                c_ops=[np.sqrt(1.0 - 0.5*eta)*np.sqrt(kappa) * sx0, np.sqrt(1.0 - 0.5*eta)*np.sqrt(kappa) * sy1],
+                                sc_ops=[np.sqrt(0.5*eta*kappa) * sx0, np.sqrt(0.5*eta*kappa) * sy1],
+                                e_ops=[sx0,sy0,sz0],
+                                ntraj=num_traj,
+                                dW_factors=[1,1],
+                                solver='euler',
+                                store_measurement=True,
+                                noise=1)
+
+            qt_noise = np.array(result.noise)
+            wvec = qt_noise[...,0,:,tf.newaxis]
+
+            # Run the model
+            epsilons_traj = tf.repeat([eps], repeats=num_traj, axis=0)[:,tf.newaxis]
+            params = np.array([omega,2.0*kappa,eta,gamma_s,eps], dtype=np.float32)
+            for ii in range(params.shape[0]):
+                if ii in input_params:
+                    param_idx = input_params.index(ii)
+                    param_inputs = epsilons_traj[:,param_idx:param_idx+1]
+                else:
+                    param_inputs = params[ii]*np.ones_like(epsilons_traj[:,:1])
+
+                if ii == 0:
+                    traj_inputs = param_inputs
+                else:
+                    traj_inputs = tf.concat([traj_inputs, param_inputs], axis=1)
+
+            meas_op0 = tf.one_hot([meas_op[0]], depth=3)*tf.ones([num_traj,3], tf.float32)
+            meas_op1 = tf.one_hot([meas_op[1]], depth=3)*tf.ones([num_traj,3], tf.float32)
+            traj_inputs = tf.concat([tf.cast(traj_inputs, tf.float32), meas_op0, meas_op1], axis=1)
+
+            t0 = time.time()
+            print('Running run_model_2d...')
+            rhovec, ivec, _, _ = fusion.run_model_2d(rho0, traj_inputs, num_traj=num_traj, mint=mint, maxt=maxt, deltat=deltat, sim_noise=True, comp_i=True, wvec=wvec)
+            print(f'Done. Run time (s): {time.time() - t0}')
+            probs = sde_systems.get_2d_probs(rhovec)
+            probs = tf.math.real(probs)
+
+            # TODO - Compare probabilities in the average
+            self.assertLessEqual(tf.reduce_max(tf.abs(tf.math.imag(probs))), 1e-16)
+            #print(result.expect[0][:20])
+            #print(2*probs[0,:20,0] - 1)
+
+            # Compare trajectories relative to the mean
+            all_meas = np.zeros([len(result.measurement), result.measurement[0].shape[0], result.measurement[0].shape[1]], result.measurement[0].dtype)
+            for idx in range(len(result.measurement)):
+                all_meas[idx,:,:] = result.measurement[idx]
+            #qutip_diff = tf.reshape(all_meas, [-1,1,all_meas.shape[1], all_meas.shape[2]])
+            #qutip_diff = tf.reduce_mean(qutip_diff, axis=1)
+            
+            qutip_volt = diff_to_volt(tf.constant(all_meas), deltat)[:,:-1,:]
+
+            rel_err = tf.reduce_mean(tf.abs(ivec[:,20:,:] - qutip_volt[:,20:,:])/tf.abs(tf.reduce_mean(qutip_volt[:,20:,:], axis=0)))
+            print(f'Rel ERR: {rel_err}')
+            self.assertLessEqual(rel_err, tol)
 
 class TestPhysicalRNN(unittest.TestCase):
     def test_rnn_layer(self):
