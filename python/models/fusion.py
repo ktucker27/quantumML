@@ -5,6 +5,7 @@ from tensorflow.keras import backend as K
 import os
 import sys
 import math
+import pickle
 
 current = os.path.dirname(os.path.realpath(__file__))
 parent = os.path.dirname(current)
@@ -69,6 +70,77 @@ def load_model(model, modeldir):
     savedir = os.path.join(modeldir, f'{idx}')
     saved_val = tf.saved_model.load(savedir)
     val.assign(saved_val)
+
+def analyze_hist(basedir, metric_names, hist_dir='histories'):
+  basefiles = os.listdir(basedir)
+  basefiles.sort()
+
+  for basefile in [os.path.join(basedir, x) for x in basefiles]:
+    if os.path.isdir(basefile):
+      if hist_dir in os.listdir(basefile):
+        historydir = os.path.join(basefile, hist_dir)
+        print('Loading histories from', historydir)
+
+        history_files = os.listdir(historydir)
+        histories = []
+        final_losses = []
+        final_val_losses = []
+        final_val_metric = {}
+        final_test_losses = []
+        final_test_metric = {}
+
+        for idx, history_file in enumerate(history_files):
+          if history_file.find('.dat') < 0:
+            continue
+
+          # Load the history
+          with open(os.path.join(historydir,history_file), "rb") as file_pi:
+            history = pickle.load(file_pi)
+
+          histories += [history]
+
+          epoch_idx = -1
+          final_losses += [history['loss'][epoch_idx]]
+
+          valid_vals = history['valid_metrics'][epoch_idx]
+          test_vals = history['test_metrics'][epoch_idx]
+
+          vlosses = []
+          for d in valid_vals:
+            vlosses += [d['loss']]
+          final_val_losses += [np.mean(vlosses)]
+
+          tlosses = []
+          for d in test_vals:
+            tlosses += [d['loss']]
+          final_test_losses += [np.mean(tlosses)]
+
+          for metric_name in metric_names:
+            if idx == 0:
+              final_val_metric[metric_name] = []
+              final_test_metric[metric_name] = []
+
+            vmetrics = []
+            for d in valid_vals:
+              vmetrics += [d[metric_name]]
+            final_val_metric[metric_name] += [np.mean(vmetrics)]
+
+            tmetrics = []
+            for d in test_vals:
+              tmetrics += [d[metric_name]]
+            final_test_metric[metric_name] += [np.mean(tmetrics)]
+
+        print(f'Loaded {len(histories)} histories')
+
+        for metric_name in metric_names:
+          print(metric_name + ':')
+
+          sorted_test_metrics = np.take(final_test_metric[metric_name], np.argsort(final_val_losses))
+
+          num_vals = sorted_test_metrics.shape[0]
+          print('Percentiles:', sorted_test_metrics[::np.round(0.25*num_vals).astype(np.int32)])
+          print('Min:', np.min(final_test_metric[metric_name]))
+          print('Mean:', np.mean(final_test_metric[metric_name]))
 
 def init_to_onehot(x_data, y_data):
   '''
