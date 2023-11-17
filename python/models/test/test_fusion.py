@@ -443,7 +443,7 @@ class TestProjectToRho(unittest.TestCase):
         assert(validate_density(tf.constant(proj_rho)))
 
     def test_valid_rho(self):
-        # Run the projection on a set of validate density operators and confirm they do not change
+        # Run the projection on a set of valid density operators and confirm they do not change
 
         tol = 1e-14
 
