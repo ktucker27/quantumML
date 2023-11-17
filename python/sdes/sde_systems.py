@@ -188,7 +188,7 @@ def project_to_rho(mu, d):
     '''
 
     # Get the eigenvalues/vectors of mu
-    evals, evec = tf.linalg.eig(mu)
+    evals, evec = tf.linalg.eigh(mu)
     #assert(tf.reduce_max(tf.abs(tf.math.imag(evals))) < 1.0e-10)
     evals = tf.cast(tf.math.real(evals), tf.float64)
     evalsidx = tf.argsort(evals, direction='DESCENDING', axis=-1)
