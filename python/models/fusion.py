@@ -326,6 +326,7 @@ class EulerRNNCell(tf.keras.layers.Layer):
     self.num_traj = num_traj
     self.params = params
     self.input_param = input_param
+    self.meas_param = 1 # Number of input parameters assumed to be one
 
     self.state_size = self.rho0.shape
     self.output_size = 43
@@ -333,7 +334,7 @@ class EulerRNNCell(tf.keras.layers.Layer):
     super(EulerRNNCell, self).__init__(**kwargs)
 
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
-    return tf.reshape(tf.ones([batch_size,1], dtype=tf.complex128)*tf.cast(tf.constant(self.rho0), dtype=tf.complex128), [batch_size,4,4])
+    return tf.reshape(tf.ones([self.num_traj*batch_size,1], dtype=tf.complex128)*tf.cast(tf.constant(self.rho0), dtype=tf.complex128), [self.num_traj*batch_size,4,4])
 
   def run_model(self, rho, params, num_traj, mint, maxt, deltat=2**(-8), comp_iq=True):
     x0 = sde_systems.wrap_rho_to_x(rho, 4)
@@ -358,27 +359,32 @@ class EulerRNNCell(tf.keras.layers.Layer):
 
     for ii in range(self.params.shape[0]):
       if ii == self.input_param:
-        param_inputs = inputs + 1.0e-8
+        param_idx = 0
+        param_inputs = inputs[:,param_idx:param_idx+1] + 1.0e-8
       else:
-        param_inputs = self.params[ii]*tf.ones(tf.shape(inputs), dtype=inputs.dtype)
+        param_inputs = self.params[ii]*tf.ones(tf.shape(inputs[:,:1]), dtype=inputs.dtype)
       
       if ii == 0:
         traj_inputs = param_inputs
       else:
         traj_inputs = tf.concat((traj_inputs, param_inputs), axis=1)
 
-    traj_inputs = tf.squeeze(traj_inputs)
+    # Append measurement types onto the end if provided
+    if self.meas_param >= 0:
+      traj_inputs = tf.concat([traj_inputs, inputs[:,self.meas_param:]], axis=1)
+
+    #traj_inputs = tf.squeeze(traj_inputs)
     traj_inputs = tf.tile(traj_inputs, multiples=[self.num_traj,1])
-    rho = tf.tile(rho, multiples=[self.num_traj,1,1])
+    #rho = tf.tile(rho, multiples=[self.num_traj,1,1])
 
     # Advance the state one time step
     rhovecs = self.run_model(rho, traj_inputs, num_traj=tf.shape(traj_inputs)[0], mint=0, maxt=self.maxt, deltat=self.deltat, comp_iq=False)
 
     # Average over trajectories
-    rhovecs = tf.reduce_mean(tf.reshape(rhovecs, [self.num_traj,-1,tf.shape(rhovecs)[1],tf.shape(rhovecs)[2],tf.shape(rhovecs)[3]]), axis=0)
+    rhovecs_avg = tf.reduce_mean(tf.reshape(rhovecs, [self.num_traj,-1,tf.shape(rhovecs)[1],tf.shape(rhovecs)[2],tf.shape(rhovecs)[3]]), axis=0)
     
     # Calculate probabilities
-    probs = tf.math.real(sde_systems.get_2d_probs(rhovecs)[:,-1,:])
+    probs = tf.math.real(sde_systems.get_2d_probs(rhovecs_avg)[:,-1,:])
     probs = tf.math.maximum(probs,0)
     probs = tf.math.minimum(probs,1.0)
 
