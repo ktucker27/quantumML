@@ -418,5 +418,64 @@ class TestPhysicalRNN(unittest.TestCase):
             print(f'MSE: {mse}')
             self.assertLessEqual(mse, tol)
 
+class TestProjectToRho(unittest.TestCase):
+    def test_project(self):
+        # Create densities with negative eigenvalues and project
+
+        tol = 1e-15
+
+        n = 1000
+        d = 4
+        l = tf.cast(tf.complex(tf.random.uniform([n,d,d]), tf.random.uniform([n,d,d])), tf.complex128)
+        mu = l + tf.transpose(l, perm=[0,2,1], conjugate=True)
+        mu = mu/tf.linalg.trace(mu)[:,tf.newaxis,tf.newaxis]
+
+        evals, _ = tf.linalg.eigh(mu)
+        print(f'Matrices with negative evals: {tf.reduce_sum(tf.cast(tf.reduce_min(tf.math.real(evals), axis=1) < 0, tf.int32)).numpy()}/{n}')
+        self.assertLessEqual(tf.reduce_max(tf.abs(tf.math.imag(evals))), tol)
+        self.assertLessEqual(tf.reduce_max(tf.abs(tf.reduce_sum(evals, axis=1) - 1)), 5e-6)
+
+        proj_rho = np.zeros_like(mu.numpy())
+        for ii in range(n):
+            proj_rho[ii,:,:] = sde_systems.project_to_rho(mu[ii,:,:], d)
+
+        # Validate density operators
+        assert(validate_density(tf.constant(proj_rho)))
+
+    def test_valid_rho(self):
+        # Run the projection on a set of validate density operators and confirm they do not change
+
+        tol = 1e-14
+
+        mint = 0.0
+        maxt = 1.0
+        deltat = 2**(-8)
+
+        omega = 1.395
+        kappa = 0.83156
+        epsilons = [0.0, 0.5, 1.0]
+        meas_op = [2,2]
+
+        sx, _, _ = sde_systems.paulis()
+        rho0 = sde_systems.get_init_rho(sx, sx, 0, 1)
+
+        # Run the Liouvillian
+        for epsidx, eps in enumerate(epsilons):
+            print(f'Checking epsilon = {eps}...')
+            liouv = sde_systems.RabiWeakMeasSDE.get_liouv(omega, 2.0*kappa, [eps], 2, meas_op)
+            rhovec_truth, _ = sde_systems.get_2d_probs_truth(liouv, rho0, deltat, maxt - deltat*0.5)
+
+            self.assertTrue(validate_density(tf.constant(rhovec_truth)))
+
+            proj_rho = np.zeros_like(rhovec_truth)
+            for ii in range(rhovec_truth.shape[0]):
+                proj_rho[ii,:,:] = sde_systems.project_to_rho(tf.constant(rhovec_truth[ii,:,:]), 4).numpy()
+
+            self.assertTrue(validate_density(tf.constant(proj_rho)))
+
+            abs_err = tf.reduce_max(tf.abs(proj_rho - rhovec_truth))
+            print(f'ABS ERR: {abs_err}')
+            self.assertLessEqual(abs_err, tol)
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
