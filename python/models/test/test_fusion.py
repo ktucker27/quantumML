@@ -497,7 +497,7 @@ class TestPhysicalRNN(unittest.TestCase):
         #euler_cell = fusion.EulerRNNCell(rho0=tf.constant(rho0), maxt=1.5*deltat, deltat=deltat, params=params, num_traj=num_traj, input_param=4)
         euler_cell = flex.EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
                                            rho0=tf.constant(rho0), maxt=1.5*deltat, deltat=deltat, 
-                                           params=params, num_traj=num_traj, input_param=[4], meas_param=1,
+                                           params=params, num_traj=num_traj, input_param=[0,4], meas_param=2,
                                            project_rho=True, sim_noise=False)
         rnn_layer = tf.keras.layers.RNN(euler_cell,
                                         stateful=False,
@@ -506,15 +506,19 @@ class TestPhysicalRNN(unittest.TestCase):
 
         # Setup input tensor
         epsten = tf.constant(epsilons)
+        omegaten = omega*tf.ones([epsten.shape[0],1], tf.float32)
+        paramten = tf.concat([omegaten, epsten[:,tf.newaxis]], axis=1)
         for meas_idx in range(3):
             meas_op = [meas_idx,meas_idx]
-            meas_op0 = tf.one_hot([meas_op[0]], depth=3)*tf.ones([epsten.shape[0],3], tf.float32)
-            meas_op1 = tf.one_hot([meas_op[1]], depth=3)*tf.ones([epsten.shape[0],3], tf.float32)
-            meas_inputs = tf.concat([tf.cast(epsten[:,tf.newaxis], tf.float32), meas_op0, meas_op1], axis=1)
+            meas_op0 = tf.one_hot([meas_op[0]], depth=3)*tf.ones([paramten.shape[0],3], tf.float32)
+            meas_op1 = tf.one_hot([meas_op[1]], depth=3)*tf.ones([paramten.shape[0],3], tf.float32)
+            meas_inputs = tf.concat([tf.cast(paramten, tf.float32), meas_op0, meas_op1], axis=1)
             if meas_idx == 0:
                 traj_inputs = meas_inputs
             else:
                 traj_inputs = tf.concat([traj_inputs, meas_inputs], axis=0)
+        print('Input:')
+        print(traj_inputs)
         
         # Run the layer
         t0 = time.time()
