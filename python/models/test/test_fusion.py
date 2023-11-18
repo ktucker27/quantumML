@@ -461,6 +461,85 @@ class TestPhysicalRNN(unittest.TestCase):
             print(f'MSE: {mse}')
             self.assertLessEqual(mse, tol)
 
+    def test_rnn_layer_xyz(self):
+        tol = 5e-6
+
+        num_traj = 1
+        mint = 0.0
+        maxt = 1.0
+        deltat = 2**(-8)
+        tvec = np.arange(mint, maxt, deltat)
+
+        omega = 1.395
+        kappa = 0.83156
+        eta = 0.1469
+        gamma_s = 0.0
+        epsilons = [0.0, 0.5, 1.0]
+        num_eps = len(epsilons)
+        params = np.array([omega,2.0*kappa,eta,gamma_s,epsilons[0]], dtype=np.double)
+
+        _, _, sz = sde_systems.paulis()
+        rho0 = sde_systems.get_init_rho(sz, sz, 0, 0)
+
+        # Make the RNN layer
+        lstm_size = 10
+        a_rnn_cell_real = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+        a_rnn_cell_imag = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+        b_rnn_cell_real = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+        b_rnn_cell_imag = tf.keras.layers.LSTMCell(lstm_size, kernel_initializer='zeros', recurrent_initializer='zeros', bias_initializer='zeros')
+
+        a_rnn_cell_real.trainable = False
+        a_rnn_cell_imag.trainable = False
+        b_rnn_cell_real.trainable = False
+        b_rnn_cell_imag.trainable = False
+
+        repeat_layer = tf.keras.layers.RepeatVector(tvec.shape[0])
+        #euler_cell = fusion.EulerRNNCell(rho0=tf.constant(rho0), maxt=1.5*deltat, deltat=deltat, params=params, num_traj=num_traj, input_param=4)
+        euler_cell = flex.EulerFlexRNNCell(a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag,
+                                           rho0=tf.constant(rho0), maxt=1.5*deltat, deltat=deltat, 
+                                           params=params, num_traj=num_traj, input_param=[4], meas_param=1,
+                                           project_rho=True, sim_noise=False)
+        rnn_layer = tf.keras.layers.RNN(euler_cell,
+                                        stateful=False,
+                                        return_sequences=True,
+                                        name='physical_layer')
+
+        # Setup input tensor
+        epsten = tf.constant(epsilons)
+        for meas_idx in range(3):
+            meas_op = [meas_idx,meas_idx]
+            meas_op0 = tf.one_hot([meas_op[0]], depth=3)*tf.ones([epsten.shape[0],3], tf.float32)
+            meas_op1 = tf.one_hot([meas_op[1]], depth=3)*tf.ones([epsten.shape[0],3], tf.float32)
+            meas_inputs = tf.concat([tf.cast(epsten[:,tf.newaxis], tf.float32), meas_op0, meas_op1], axis=1)
+            if meas_idx == 0:
+                traj_inputs = meas_inputs
+            else:
+                traj_inputs = tf.concat([traj_inputs, meas_inputs], axis=0)
+        
+        # Run the layer
+        t0 = time.time()
+        print('Running Euler RNN layer...')
+        repeat_out = repeat_layer(traj_inputs)
+        probs = rnn_layer(repeat_out)
+        print(f'Done. Run time (s): {time.time() - t0}')
+
+        self.assertLessEqual(tf.reduce_max(tf.abs(tf.math.imag(probs))), 1e-16)
+
+        # Run the Liouvillian
+        for meas_idx in range(3):
+            meas_op = [meas_idx,meas_idx]
+            print(f'Checking measurement index {meas_idx}...')
+            for epsidx, eps in enumerate(epsilons):
+                print(f'Checking epsilon = {eps}...')
+                liouv = sde_systems.RabiWeakMeasSDE.get_liouv(omega, 2.0*kappa, [eps], 2, meas_op)
+                _, probs_truth = sde_systems.get_2d_probs_truth(liouv, rho0, deltat, maxt - deltat*0.5)
+
+                # Compare all probabilities
+                self.assertLessEqual(tf.reduce_max(tf.abs(tf.math.imag(probs_truth))), 1e-14)
+                mse = tf.reduce_mean(tf.pow(probs[meas_idx*num_eps + epsidx, :, :42] - tf.math.real(probs_truth), 2.0))
+                print(f'MSE: {mse}')
+                self.assertLessEqual(mse, tol)
+
 class TestProjectToRho(unittest.TestCase):
     def test_project(self):
         # Create densities with negative eigenvalues and project
