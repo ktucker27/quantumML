@@ -476,7 +476,7 @@ class TestPhysicalRNN(unittest.TestCase):
         gamma_s = 0.0
         epsilons = [0.0, 0.5, 1.0]
         num_eps = len(epsilons)
-        params = np.array([omega,2.0*kappa,eta,gamma_s,epsilons[0]], dtype=np.double)
+        params = np.array([0.0,2.0*kappa,eta,gamma_s,0.0], dtype=np.double)
 
         _, _, sz = sde_systems.paulis()
         rho0 = sde_systems.get_init_rho(sz, sz, 0, 0)
