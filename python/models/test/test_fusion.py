@@ -173,7 +173,7 @@ class TestLiouv(unittest.TestCase):
 
         _, _, sz = sde_systems.paulis()
         rho0 = sde_systems.get_init_rho(sz, sz, 0, 0)
-        liouv = sde_systems.RabiWeakMeasSDE.get_liouv(omega, 2.0*kappa, [eps], 2)
+        liouv = sde_systems.RabiWeakMeasSDE.get_liouv(omega, 2.0*kappa, [eps], 2, [2,2])
         _, liouv_probs = sde_systems.get_2d_probs_truth(liouv, rho0, deltat, maxt - deltat*0.5)
 
         # Compare all probabilities
@@ -201,12 +201,34 @@ class TestRunModel2d(unittest.TestCase):
         omega = 1.395
         kappa = 0.83156
         eta = 0.1469
+        gamma_s = 0.0
         eps = 0.1
-        params = np.array([omega,2.0*kappa,eta,eps], dtype=np.float32)
         num_traj=100
+
+        input_params = [4]
+        meas_op = [2,2]
+
+        epsilons_traj = tf.repeat([eps], repeats=num_traj, axis=0)[:,tf.newaxis]
+        params = np.array([omega,2.0*kappa,eta,gamma_s,eps], dtype=np.float32)
+        for ii in range(params.shape[0]):
+            if ii in input_params:
+                param_idx = input_params.index(ii)
+                param_inputs = epsilons_traj[:,param_idx:param_idx+1]
+            else:
+                param_inputs = params[ii]*np.ones_like(epsilons_traj[:,:1])
+
+            if ii == 0:
+                traj_inputs = param_inputs
+            else:
+                traj_inputs = tf.concat([traj_inputs, param_inputs], axis=1)
+
+        meas_op0 = tf.one_hot([meas_op[0]], depth=3)*tf.ones([num_traj,3], tf.float32)
+        meas_op1 = tf.one_hot([meas_op[1]], depth=3)*tf.ones([num_traj,3], tf.float32)
+        traj_inputs = tf.concat([tf.cast(traj_inputs, tf.float32), meas_op0, meas_op1], axis=1)
+        
         t0 = time.time()
         print('Running run_model_2d...')
-        rhovec, _, _, tvec = fusion.run_model_2d(rho0, params[np.newaxis,:], num_traj, mint = 0.0, maxt = 1.0, deltat=2**(-8), comp_i=False)
+        rhovec, _, _, tvec = fusion.run_model_2d(rho0, traj_inputs, num_traj, mint = 0.0, maxt = 1.0, deltat=2**(-8), comp_i=False)
         print(f'Done. Run time (s): {time.time() - t0}')
         probs = sde_systems.get_2d_probs(rhovec)
 
@@ -228,19 +250,40 @@ class TestRunModel2d(unittest.TestCase):
         omega = 1.395
         kappa = 0.83156
         eta = 0.1469
+        gamma_s = 0.0
         epsilons = np.arange(0.0, 2.01, 0.5)
+        num_traj=100
+
+        input_params = [4]
+        meas_op = [2,2]
 
         sx, _, _ = sde_systems.paulis()
         rho0 = sde_systems.get_init_rho(sx, sx, 0, 1)[tf.newaxis,...]
 
         for eps in epsilons:
+            epsilons_traj = tf.repeat([eps], repeats=num_traj, axis=0)[:,tf.newaxis]
+            params = np.array([omega,2.0*kappa,eta,gamma_s,eps], dtype=np.float32)
+            for ii in range(params.shape[0]):
+                if ii in input_params:
+                    param_idx = input_params.index(ii)
+                    param_inputs = epsilons_traj[:,param_idx:param_idx+1]
+                else:
+                    param_inputs = params[ii]*np.ones_like(epsilons_traj[:,:1])
+
+                if ii == 0:
+                    traj_inputs = param_inputs
+                else:
+                    traj_inputs = tf.concat([traj_inputs, param_inputs], axis=1)
+
+            meas_op0 = tf.one_hot([meas_op[0]], depth=3)*tf.ones([num_traj,3], tf.float32)
+            meas_op1 = tf.one_hot([meas_op[1]], depth=3)*tf.ones([num_traj,3], tf.float32)
+            traj_inputs = tf.concat([tf.cast(traj_inputs, tf.float32), meas_op0, meas_op1], axis=1)
+            
             # Run the model
             print(f'epsilon = {eps}')
-            params = np.array([omega,2.0*kappa,eta,eps], dtype=np.float32)
-            num_traj=100
             t0 = time.time()
             print('Running run_model_2d...')
-            rhovec, _, _, _ = fusion.run_model_2d(rho0, params[np.newaxis,:], num_traj, mint=mint, maxt=maxt, deltat=deltat, comp_i=False)
+            rhovec, _, _, _ = fusion.run_model_2d(rho0, traj_inputs, num_traj, mint=mint, maxt=maxt, deltat=deltat, comp_i=False)
             print(f'Done. Run time (s): {time.time() - t0}')
             probs = sde_systems.get_2d_probs(rhovec)
 
