@@ -46,6 +46,7 @@ def parse_args():
     parser.add_argument('--gamma_s', required=False, default=0.0, type=float, help='Decoder model value of gamma_s')
     parser.add_argument('--clean', action='store_true', help='If true, input data is clean, not sampled')
     parser.add_argument('--flex', action='store_true', help='If true, decoder training is enabled')
+    parser.add_argument('--dec_lstm_size', required=False, default=16, type=int, help='Decoder LSTM size')
 
     return parser.parse_args()
 
@@ -198,7 +199,7 @@ def main():
     num_features -= 2
     encoder_sizes = [100, 50]
     enc_lstm_size = 32
-    dec_lstm_size = 16
+    dec_lstm_size = args.dec_lstm_size
     avg_size = max([1,int(20/args.stride)])
     num_traj = 1
     start_meas = 0.0
