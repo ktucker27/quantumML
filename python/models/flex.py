@@ -610,7 +610,7 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lst
 
   x = tf.repeat(x, num_meas, axis=0)
   x = tf.concat([x, meas_params0, meas_params1], axis=1)
-  x = tf.keras.layers.RepeatVector(seq_len, input_shape=[num_params+3])(x)
+  x = tf.keras.layers.RepeatVector(seq_len, input_shape=[num_params+6])(x)
 
   # Add the physical RNN layer
   if project_rho:
@@ -654,7 +654,7 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lst
     output = tf.reshape(output, [params_per_group,-1,seq_len,num_features_in,num_out,num_meas])
     output = tf.transpose(output, perm=[1,0,2,3,4,5])
 
-  return tf.keras.Model(input_layer, output, name='encoder')
+  return tf.keras.Model(input_layer, output, name='multimeas_rnn')
 
 def build_datagen_model(seq_len, num_features, rho0, num_params, params, deltat, num_traj=1, start_meas=0, 
                         sim_noise=True, comp_iq=True, input_params=[4], strong_probs=[], num_meas=1, meas_op=[]):
