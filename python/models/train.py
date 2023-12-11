@@ -2,9 +2,15 @@ import numpy as np
 import tensorflow as tf
 import os
 import sys
+import pickle
 
 import fusion
 import flex
+
+currpath = os.path.dirname(os.path.realpath(__file__))
+sys.path.append(os.path.join(currpath,'../sdes'))
+
+import sde_systems
 
 def load_dataset(datapath, data_group_size, clean, stride, group_size, num_train_groups, meas_op=[], debug=True):
     '''
@@ -122,3 +128,156 @@ def load_dataset(datapath, data_group_size, clean, stride, group_size, num_train
         print(test_params.shape)
     
     return train_x, train_y, train_params, valid_x, valid_y, valid_params, test_x, test_y, test_params
+
+def train(train_x, train_y,                                            # Data
+          valid_x, valid_y,
+          test_x, test_y,
+          init_ops, input_params, params, deltat, stride,              # Physical params
+          group_size, data_group_size, groups_per_minibatch,           # Data size params
+          start_run_idx, num_runs, num_epochs, num_eval_steps, lr, dr, # Train params
+          historydir, modeldir,                                        # Output params
+          perform_eval=True,
+          savehist=True,
+          savemodel=True,
+          debug=True):
+  num_per_group = int(group_size/data_group_size)
+  phys_layer_idx = -6
+  verbose_level = 1
+  mini_batch_size = num_per_group*groups_per_minibatch
+
+  # Setup model parameters
+  _, params_per_group, seq_len, num_features, num_meas = train_x.shape
+  num_features -= 2
+  encoder_sizes = [100, 50]
+  enc_lstm_size = 32
+  dec_lstm_size = 16
+  avg_size = max([1,int(20/stride)])
+  num_traj = 1
+  start_meas = 0.0
+  comp_iq = True
+  project_rho = False
+  train_decoder = False
+  strong_probs = []
+  strong_probs_input = True
+  num_params = len(input_params)
+
+  max_val = 12
+  offset = 1
+
+  td_sizes = [32, 16]
+
+  # Setup initial condition
+  all_ops = sde_systems.paulis()
+  rho0 = sde_systems.get_init_rho(all_ops[init_ops[0]], all_ops[init_ops[1]], 0, 0)
+  if debug:
+    pauli_names = ['X', 'Y', 'Z']
+    print(f'Initial state: {pauli_names[init_ops[0]]}{pauli_names[init_ops[1]]}00')
+    print('params:', params)
+
+  num_training_runs = len(num_epochs)
+  for run_idx in range(start_run_idx, start_run_idx + num_runs, 1):
+    valid_metrics = []
+    test_metrics = []
+
+    # Set the seed using keras.utils.set_random_seed. This will set:
+    # 1) `numpy` seed
+    # 2) `tensorflow` random seed
+    # 3) `python` random seed
+    seed = run_idx
+    tf.keras.utils.set_random_seed(seed)
+
+    # This will make TensorFlow ops as deterministic as possible, but it will
+    # affect the overall performance, so it's not enabled by default.
+    # `enable_op_determinism()` is introduced in TensorFlow 2.9.
+    tf.config.experimental.enable_op_determinism()
+
+    # Build RNN model
+    model = flex.build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lstm_size, dec_lstm_size, td_sizes, encoder_sizes, num_params,
+                                           rho0, params, deltat, num_traj, start_meas, comp_iq=comp_iq, max_val=max_val, offset=offset,
+                                           strong_probs=strong_probs, project_rho=project_rho, strong_probs_input=strong_probs_input,
+                                           input_params=input_params, num_per_group=num_per_group, params_per_group=params_per_group)
+
+    loss_func = fusion.fusion_mse_loss_shuffle
+
+    metric_func = fusion.param_metric_shuffle_mse
+    trimmed_metric_func = fusion.param_metric_shuffle_trimmed_mse
+    omega_metric_func = fusion.param_metric_shuffle_omega_trimmed_mse
+    eps_metric_func = fusion.param_metric_shuffle_eps_trimmed_mse
+
+    all_metrics = [metric_func, trimmed_metric_func, omega_metric_func, eps_metric_func]
+    fusion.compile_model(model, loss_func, metrics=all_metrics)
+
+    for train_idx in range(num_training_runs):
+      print(f'Training run {train_idx}')
+      first_run = train_idx == 0
+      if first_run:
+        for layer in model.layers:
+          layer.trainable = True
+        model.layers[phys_layer_idx].trainable = train_decoder
+        model.layers[phys_layer_idx].cell.trainable = train_decoder
+        model.layers[phys_layer_idx].cell.flex.a_cell_real.trainable = train_decoder
+        model.layers[phys_layer_idx].cell.flex.a_cell_imag.trainable = train_decoder
+        model.layers[phys_layer_idx].cell.flex.b_cell_real.trainable = train_decoder
+        model.layers[phys_layer_idx].cell.flex.b_cell_imag.trainable = train_decoder
+        model.layers[phys_layer_idx].cell.flex.a_dense_real.trainable = train_decoder
+        model.layers[phys_layer_idx].cell.flex.a_dense_imag.trainable = train_decoder
+        model.layers[phys_layer_idx].cell.flex.b_dense_real.trainable = train_decoder
+        model.layers[phys_layer_idx].cell.flex.b_dense_imag.trainable = train_decoder
+
+        fusion.compile_model(model, loss_func, metrics=all_metrics)
+
+        model.summary()
+        print(model.trainable_weights)
+
+      lrscheduler = tf.keras.callbacks.LearningRateScheduler(tf.keras.optimizers.schedules.ExponentialDecay(
+          initial_learning_rate=lr,
+          decay_steps=1,
+          decay_rate=dr))
+
+      run_history = model.fit(train_x, train_y, batch_size=mini_batch_size, epochs=num_epochs[train_idx],
+                              validation_data=(valid_x, valid_y), verbose=verbose_level, shuffle=True,
+                              callbacks=[lrscheduler])
+
+      if perform_eval:
+        # Get the valid metric
+        valid_vals = fusion.eval_model(model, valid_x, valid_y, num_eval_steps, num_per_group)
+        vlosses = []
+        vmetrics = []
+        for d in valid_vals:
+            vlosses += [d['loss']]
+            vmetrics += [d['param_metric_shuffle_trimmed_mse']]
+        valid_metrics += [valid_vals]
+        print(f'Valid metric for run {train_idx}: {np.mean(vmetrics):.3g}')
+
+        # Get the test metric
+        test_vals = fusion.eval_model(model, test_x, test_y, num_eval_steps, num_per_group)
+        tlosses = []
+        tmetrics = []
+        for d in test_vals:
+            tlosses += [d['loss']]
+            tmetrics += [d['param_metric_shuffle_trimmed_mse']]
+        test_metrics += [test_vals]
+        print(f'Test metric for run {train_idx}: {np.mean(tmetrics):.3g}')
+
+      if first_run:
+        history = run_history
+      else:
+        for k, v in run_history.history.items():
+          history.history[k] += v
+
+    # Save the history
+    if savehist:
+      history.history['seed'] = seed
+      history.history['valid_metrics'] = valid_metrics
+      history.history['test_metrics'] = test_metrics
+      history.history['num_epochs'] = num_epochs
+      savepath = historydir + f'hist_{seed}.dat'
+      print('Saving history to', savepath)
+      with open(savepath, 'wb') as file_pi:
+        pickle.dump(history.history, file_pi)
+
+    # Save the model
+    if savemodel:
+      savepath = os.path.join(modeldir, f'model_{seed}')
+      print('Saving model to', savepath)
+      fusion.save_model(model, savepath)
