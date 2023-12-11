@@ -18,14 +18,8 @@ def load_dataset(datapath, data_group_size, clean, stride, group_size, num_train
     '''
     voltage = tf.saved_model.load(datapath)
 
-    if clean:
-      if debug:
-        print('Input data is noise free')
-      all_params = tf.math.real(voltage[:,0,2:,0]).numpy()
-      voltage = tf.math.real(voltage[:,tf.newaxis,...,:2,:])
-    else:
-      all_params = voltage[:,0,0,0,2:,0].numpy()
-      voltage = voltage[...,0,:]
+    all_params = voltage[:,0,0,0,2:,0].numpy()
+    voltage = voltage[...,0,:]
     
     # Append measurement operators
     if len(meas_op) == 0:

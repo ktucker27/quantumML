@@ -43,6 +43,8 @@ def parse_args():
     parser.add_argument('--seed', required=False, default=0, type=int, help='Random seed to use for the run')
     parser.add_argument('--stride', required=False, default=1, type=int, help='Time stride for cutting data file')
     parser.add_argument('--clean', action='store_true', help='If true, input data is clean, not sampled')
+    parser.add_argument('--num_train_runs', required=False, default=3, type=int, help='Number of training runs')
+    parser.add_argument('--num_epochs', required=False, default=100, type=int, help='Number of epochs per training run')
 
     return parser.parse_args()
 
@@ -172,8 +174,11 @@ def main():
     phys_layer_idx = -6
     verbose_level = 1
     mini_batch_size = num_per_group*groups_per_minibatch
-    num_epochs = [100, 100, 100]
-    num_training_runs = len(num_epochs)
+    num_training_runs = args.num_train_runs
+    num_epochs = []
+    for _ in range(num_training_runs):
+       num_epochs.append(args.num_epochs)
+    print('Number of epochs:', num_epochs)
     lr = 3e-3
     dr = 0.99
 
