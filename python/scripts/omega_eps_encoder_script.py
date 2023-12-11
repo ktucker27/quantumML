@@ -45,6 +45,7 @@ def parse_args():
     parser.add_argument('--clean', action='store_true', help='If true, input data is clean, not sampled')
     parser.add_argument('--num_train_runs', required=False, default=3, type=int, help='Number of training runs')
     parser.add_argument('--num_epochs', required=False, default=100, type=int, help='Number of epochs per training run')
+    parser.add_argument('--dr', required=False, default=0.99, type=float, help='Training decay rate')
 
     return parser.parse_args()
 
@@ -180,7 +181,8 @@ def main():
        num_epochs.append(args.num_epochs)
     print('Number of epochs:', num_epochs)
     lr = 3e-3
-    dr = 0.99
+    dr = args.dr
+    print('lr, dr:', lr, dr)
 
     perform_eval = True
     savehist = True
