@@ -16,11 +16,29 @@ def load_dataset(datapath, data_group_size, clean, stride, group_size, num_train
     '''
     Loads data from the specified path and splits it into training/validation/test sets
 
+    The validation set will be half the size of the training set, unless the training set has only one group.
+    Disjoint parameters are used for the training and validation/test sets. Disjoint groups are used for the
+    validation and test sets, unless there is only one validation/test group
+
+    If only one parameter is specified in the input data, it is assumed this parameter is epsilon, and that
+    omega = 1.395
+
     Inputs:
     datapath - Absolute path of data file containing a weak measurement tensor with indices
                [param, group, time, qubit, (mean, std, [true_params]), meas]
     data_group_size - Number of trajectories averaged together in the data file
+    clean - If true, data in datapath is noise free
+    stride - Subsample in time stride such that the input time index will be sliced according to [::stride]
+    group_size - Number of trajectories averaged in each group of the output tensors
+    num_train_groups - Only this many groups will be used for the training set, the rest will be discarded
+    meas_op - The two measurement operator indices, e.g. [0,1] = [X,Y]
+    debug - If true, more verbose output will be turned on
+
     Outputs:
+    Training, validation, and test tensors with the following indices:
+    [dataset]_x - [group, param, time, (qubit0, qubit1, meas_op0, meas_op1), meas]
+    [dataset]_y - [group, param, time, (qubit0, qubit1, meas_op0, meas_op1), meas, (value, omega, eps)]
+    [dataset]_params - [group, param, [true_params]]
     '''
     voltage = tf.saved_model.load(datapath)
 
