@@ -261,10 +261,7 @@ def train_model(model, seed,
                 test_x, test_y,
                 group_size, data_group_size, groups_per_minibatch, # Data size params
                 num_epochs, num_eval_steps, lr, dr,                # Train params
-                historydir, modeldir,                              # Output params
                 perform_eval=True,
-                savehist=True,
-                savemodel=True,
                 debug=True):
   '''
   Trains the given model, evaluates it, and records results
@@ -284,7 +281,7 @@ def train_model(model, seed,
   groups_per_minibatch - Number of groups in each minibatch during training
 
   Train
-  num_epochs - List containing number of epochs to train for within each run, called a training run. Learning rate
+  num_epochs - List containing number of epochs to train in each training run. Learning rate
                will be reset and metrics recorded at the end of each training run
   num_eval_steps - Number of random shuffles to perform when evaluating. Returned metrics will be averaged over
                    this number of steps
@@ -292,12 +289,18 @@ def train_model(model, seed,
   dr - Decay rate during training, decay steps set to one
 
   Output
-  historydir - Full path where histories will be saved
-  modeldir - Full path where models will be saved
   perform_eval - Will perform random shuffle evaluation if true and add results to histories
-  savehist - Flag indicating whether or not to save histories
-  savemodel - Flag indicating whether or not to save models
   debug - Flag enabling verbose debug output
+
+  Outputs:
+  history - History object containing lists of all losses and metrics concatenated across training runs 
+            as well as the following fields:
+              + seed - Records the seed
+              + num_epochs - Records the number of epochs list
+              + valid_metrics - List of num_eval_steps dictionaries with evaluation results for validation set
+                                at the end of each training run (shape = [num_training_runs][num_eval_steps])
+              + test_metrics - List of num_eval_steps dictionaries with evaluation results for test set
+                               at the end of each training run (shape = [num_training_runs][num_eval_steps])
   '''
   num_per_group = int(group_size/data_group_size)
   verbose_level = 1
@@ -349,24 +352,13 @@ def train_model(model, seed,
       for k, v in run_history.history.items():
         history.history[k] += v
 
-  # Save the history
-  if savehist:
-    history.history['seed'] = seed
-    history.history['valid_metrics'] = valid_metrics
-    history.history['test_metrics'] = test_metrics
-    history.history['num_epochs'] = num_epochs
-    savepath = historydir + f'hist_{seed}.dat'
-    if debug:
-      print('Saving history to', savepath)
-    with open(savepath, 'wb') as file_pi:
-      pickle.dump(history.history, file_pi)
-
-  # Save the model
-  if savemodel:
-    savepath = os.path.join(modeldir, f'model_{seed}')
-    if debug:
-      print('Saving model to', savepath)
-    fusion.save_model(model, savepath)
+  # Add fields to the history
+  history.history['seed'] = seed
+  history.history['num_epochs'] = num_epochs
+  history.history['valid_metrics'] = valid_metrics
+  history.history['test_metrics'] = test_metrics
+  
+  return history
 
 def train(datapath, clean, num_train_groups,                           # Data params
           group_size, data_group_size, groups_per_minibatch,
@@ -374,8 +366,6 @@ def train(datapath, clean, num_train_groups,                           # Data pa
           start_run_idx, num_runs, num_epochs, num_eval_steps, lr, dr, # Train params
           historydir, modeldir,                                        # Output params
           perform_eval=True,
-          savehist=True,
-          savemodel=True,
           debug=True):
   '''
   Performs full training procedure: loading data, initializing the model, training the model, and
@@ -414,8 +404,6 @@ def train(datapath, clean, num_train_groups,                           # Data pa
   historydir - Full path where histories will be saved
   modeldir - Full path where models will be saved
   perform_eval - Will perform random shuffle evaluation if true and add results to histories
-  savehist - Flag indicating whether or not to save histories
-  savemodel - Flag indicating whether or not to save models
   debug - Flag enabling verbose debug output
   '''
   # Load the data
@@ -437,9 +425,23 @@ def train(datapath, clean, num_train_groups,                           # Data pa
                         debug)
     
     # Train the model
-    train_model(model, seed,
-                train_x, train_y, valid_x, valid_y, test_x, test_y,
-                group_size, data_group_size, groups_per_minibatch,
-                num_epochs, num_eval_steps, lr, dr,
-                historydir, modeldir,
-                perform_eval, savehist, savemodel, debug)
+    history = train_model(model, seed,
+                          train_x, train_y, valid_x, valid_y, test_x, test_y,
+                          group_size, data_group_size, groups_per_minibatch,
+                          num_epochs, num_eval_steps, lr, dr,
+                          perform_eval, debug)
+    
+    # Save the history
+    if historydir is not None:
+      savepath = historydir + f'hist_{seed}.dat'
+      if debug:
+        print('Saving history to', savepath)
+      with open(savepath, 'wb') as file_pi:
+        pickle.dump(history.history, file_pi)
+
+    # Save the model
+    if modeldir is not None:
+      savepath = os.path.join(modeldir, f'model_{seed}')
+      if debug:
+        print('Saving model to', savepath)
+      fusion.save_model(model, savepath)
