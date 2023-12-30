@@ -439,6 +439,9 @@ def train(datapath, clean, num_train_groups,                           # Data pa
     
     # Save the history
     if historydir is not None:
+      if not os.path.exists(historydir):
+        os.makedirs(historydir)
+
       savepath = historydir + f'hist_{seed}.dat'
       if debug:
         print('Saving history to', savepath)
@@ -447,6 +450,9 @@ def train(datapath, clean, num_train_groups,                           # Data pa
 
     # Save the model
     if modeldir is not None:
+      if not os.path.exists(modeldir):
+        os.makedirs(modeldir)
+
       savepath = os.path.join(modeldir, f'model_{seed}')
       if debug:
         print('Saving model to', savepath)
