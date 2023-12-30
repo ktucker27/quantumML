@@ -168,7 +168,7 @@ def setup_model(seed, group_size, data_group_size,                 # Data size p
   input_params - Indices into params array that are latent variables (encoder model output), e.g. [0,4] = omega, eps
   params - Physical parameter array [omega, gamma (2*kappa), eta, gamma_s, eps], 
            e.g. np.array([1.395,4.0*2.0*0.83156,0.1469,0.0,0.1], dtype=np.double)
-  deltat - Time spacing in for the input/output measurement records
+  deltat - Time spacing for the input/output measurement records
   stride - Subsample in time stride such that the input time index will be sliced according to [::stride]
 
   debug - Flag enabling verbose debug output
@@ -387,7 +387,7 @@ def train(datapath, clean, num_train_groups,                           # Data pa
   input_params - Indices into params array that are latent variables (encoder model output), e.g. [0,4] = omega, eps
   params - Physical parameter array [omega, gamma (2*kappa), eta, gamma_s, eps], 
            e.g. np.array([1.395,4.0*2.0*0.83156,0.1469,0.0,0.1], dtype=np.double)
-  deltat - Time spacing in for the input/output measurement records
+  deltat - Time spacing for the measurement records in the data file
   stride - Subsample in time stride such that the input time index will be sliced according to [::stride]
 
   Train
@@ -414,6 +414,12 @@ def train(datapath, clean, num_train_groups,                           # Data pa
 
   _, params_per_group, seq_len, num_features, num_meas = train_x.shape
   num_features -= 2
+
+  # Adjust the deltat from the file time spacing to the model time spacing according
+  # to the given stride
+  deltat = deltat*stride
+  if debug:
+    print('deltat:', deltat)
 
   # Loop over requested seeds
   for run_idx in range(start_run_idx, start_run_idx + num_runs, 1):
