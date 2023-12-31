@@ -442,7 +442,7 @@ def train(datapath, clean, num_train_groups,                           # Data pa
       if not os.path.exists(historydir):
         os.makedirs(historydir)
 
-      savepath = historydir + f'hist_{seed}.dat'
+      savepath = os.path.join(historydir, f'hist_{seed}.dat')
       if debug:
         print('Saving history to', savepath)
       with open(savepath, 'wb') as file_pi:
