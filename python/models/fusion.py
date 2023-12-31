@@ -88,6 +88,8 @@ def analyze_hist(basedir, metric_names, hist_dir='histories'):
         final_val_metric = {}
         final_test_losses = []
         final_test_metric = {}
+        train_run_ratios = []
+        last_run_ratios = []
 
         for idx, history_file in enumerate(history_files):
           if history_file.find('.dat') < 0:
@@ -98,6 +100,10 @@ def analyze_hist(basedir, metric_names, hist_dir='histories'):
             history = pickle.load(file_pi)
 
           histories += [history]
+
+          train_run_ratio, last_run_ratio = analyze_loss_conv(history)
+          train_run_ratios += [train_run_ratio]
+          last_run_ratios += [last_run_ratio]
 
           epoch_idx = -1
           final_losses += [history['loss'][epoch_idx]]
@@ -132,6 +138,9 @@ def analyze_hist(basedir, metric_names, hist_dir='histories'):
 
         print(f'Loaded {len(histories)} histories')
 
+        print('Train run ratios (min, mean, max):', np.min(train_run_ratios), np.mean(train_run_ratios), np.max(train_run_ratios))
+        print('Last run ratios (min, mean, max):', np.min(last_run_ratios), np.mean(last_run_ratios), np.max(last_run_ratios))
+
         for metric_name in metric_names:
           print(metric_name + ':')
 
@@ -141,6 +150,38 @@ def analyze_hist(basedir, metric_names, hist_dir='histories'):
           print('Percentiles:', sorted_test_metrics[::np.round(0.25*num_vals).astype(np.int32)])
           print('Min:', np.min(final_test_metric[metric_name]))
           print('Mean:', np.mean(final_test_metric[metric_name]))
+
+def analyze_loss_conv(history, near_end_idx=-20, window_rad=2):
+  '''
+  Returns various metrics to assess if the validation loss has saturated during training
+
+  Inputs:
+  history - Training history dictionary containing evaluation dictionaries in
+            history[valid/test_metrics] (shape = [training_run, evaluation_idx])
+  near_end_perc - Percentage of the total number of epochs to check loss
+  window_rad - Number of epochs radius over which to average losses for smoothing
+
+  Outputs:
+  train_run_ratio - Ratio of the final loss for the last training run to the second to last
+  last_run_ratio - Ratio of smoothed losses in the last training run at the final epoch to the epoch at near_end_perc
+  '''
+  # Compute train_run_ratio
+  final_val_losses = []
+  for epoch_idx in range(len(history['valid_metrics'])):
+    valid_vals = history['valid_metrics'][epoch_idx]
+    vlosses = []
+    for d in valid_vals:
+      vlosses += [d['loss']]
+    final_val_losses += [np.mean(vlosses)]
+
+  train_run_ratio = final_val_losses[-1]/final_val_losses[-2]
+
+  # Compute last_run_ratio
+  near_end_loss = np.mean(history['val_loss'][near_end_idx - window_rad:near_end_idx+window_rad+1])
+  end_loss = np.mean(history['val_loss'][-2*window_rad-1:])
+  last_run_ratio = end_loss/near_end_loss
+
+  return train_run_ratio, last_run_ratio
 
 def init_to_onehot(x_data, y_data):
   '''
