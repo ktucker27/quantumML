@@ -150,7 +150,7 @@ def load_dataset(datapath, data_group_size, clean, stride, group_size, num_train
 def setup_model(seed, group_size, data_group_size,                 # Data size params
                 params_per_group, seq_len, num_features, num_meas,
                 init_ops, input_params, params, deltat, stride,    # Physical params
-                debug=True):
+                encoder_only=False, debug=True):
   '''
   Creates a new model initialized with the given random seed
 
@@ -171,6 +171,7 @@ def setup_model(seed, group_size, data_group_size,                 # Data size p
   deltat - Time spacing for the input/output measurement records
   stride - Subsample in time stride such that the input time index will be sliced according to [::stride]
 
+  encoder_only - If true, the model will include only the encoder up to the physical parameter layer
   debug - Flag enabling verbose debug output
 
   Outputs:
@@ -223,29 +224,42 @@ def setup_model(seed, group_size, data_group_size,                 # Data size p
                                           strong_probs=strong_probs, project_rho=project_rho, strong_probs_input=strong_probs_input,
                                           input_params=input_params, num_per_group=num_per_group, params_per_group=params_per_group)
 
-  # Setup loss and metric functions
-  loss_func = fusion.fusion_mse_loss_shuffle
+  if encoder_only:
+    layer_name = 'param_layer'
+    enc_model = tf.keras.Model(inputs=model.input,
+                               outputs=model.get_layer(layer_name).output)
+    model = enc_model
 
-  metric_func = fusion.param_metric_shuffle_mse
-  trimmed_metric_func = fusion.param_metric_shuffle_trimmed_mse
-  omega_metric_func = fusion.param_metric_shuffle_omega_trimmed_mse
-  eps_metric_func = fusion.param_metric_shuffle_eps_trimmed_mse
+    loss_func = fusion.param_loss_omega_eps_shuffle
 
-  all_metrics = [metric_func, trimmed_metric_func, omega_metric_func, eps_metric_func]
+    omega_metric_func = fusion.param_loss_omega_trimmed_shuffle
+    eps_metric_func = fusion.param_loss_eps_trimmed_shuffle
 
-  # Set decoder trainability
-  for layer in model.layers:
-    layer.trainable = True
-  model.layers[phys_layer_idx].trainable = train_decoder
-  model.layers[phys_layer_idx].cell.trainable = train_decoder
-  model.layers[phys_layer_idx].cell.flex.a_cell_real.trainable = train_decoder
-  model.layers[phys_layer_idx].cell.flex.a_cell_imag.trainable = train_decoder
-  model.layers[phys_layer_idx].cell.flex.b_cell_real.trainable = train_decoder
-  model.layers[phys_layer_idx].cell.flex.b_cell_imag.trainable = train_decoder
-  model.layers[phys_layer_idx].cell.flex.a_dense_real.trainable = train_decoder
-  model.layers[phys_layer_idx].cell.flex.a_dense_imag.trainable = train_decoder
-  model.layers[phys_layer_idx].cell.flex.b_dense_real.trainable = train_decoder
-  model.layers[phys_layer_idx].cell.flex.b_dense_imag.trainable = train_decoder
+    all_metrics = [omega_metric_func, eps_metric_func]
+  else:
+    # Setup loss and metric functions
+    loss_func = fusion.fusion_mse_loss_shuffle
+
+    metric_func = fusion.param_metric_shuffle_mse
+    trimmed_metric_func = fusion.param_metric_shuffle_trimmed_mse
+    omega_metric_func = fusion.param_metric_shuffle_omega_trimmed_mse
+    eps_metric_func = fusion.param_metric_shuffle_eps_trimmed_mse
+
+    all_metrics = [metric_func, trimmed_metric_func, omega_metric_func, eps_metric_func]
+
+    # Set decoder trainability
+    for layer in model.layers:
+      layer.trainable = True
+    model.layers[phys_layer_idx].trainable = train_decoder
+    model.layers[phys_layer_idx].cell.trainable = train_decoder
+    model.layers[phys_layer_idx].cell.flex.a_cell_real.trainable = train_decoder
+    model.layers[phys_layer_idx].cell.flex.a_cell_imag.trainable = train_decoder
+    model.layers[phys_layer_idx].cell.flex.b_cell_real.trainable = train_decoder
+    model.layers[phys_layer_idx].cell.flex.b_cell_imag.trainable = train_decoder
+    model.layers[phys_layer_idx].cell.flex.a_dense_real.trainable = train_decoder
+    model.layers[phys_layer_idx].cell.flex.a_dense_imag.trainable = train_decoder
+    model.layers[phys_layer_idx].cell.flex.b_dense_real.trainable = train_decoder
+    model.layers[phys_layer_idx].cell.flex.b_dense_imag.trainable = train_decoder
 
   fusion.compile_model(model, loss_func, metrics=all_metrics)
 
@@ -328,23 +342,29 @@ def train_model(model, seed,
       valid_vals = fusion.eval_model(model, valid_x, valid_y, num_eval_steps, num_per_group)
       valid_metrics += [valid_vals]
       if debug:
-        vlosses = []
         vmetrics = []
         for d in valid_vals:
-            vlosses += [d['loss']]
-            vmetrics += [d['param_metric_shuffle_trimmed_mse']]
-        print(f'Valid metric for run {train_idx}: {np.mean(vmetrics):.3g}')
+            # Debug metrics selected to align with legacy scripts
+            if 'param_metric_shuffle_trimmed_mse' in d.keys():
+              vmetrics += [d['param_metric_shuffle_trimmed_mse']]
+            elif 'param_loss_eps_trimmed_shuffle' in d.keys():
+              vmetrics += [d['param_loss_eps_trimmed_shuffle']]
+        if len(vmetrics) > 0:
+          print(f'Valid metric for run {train_idx}: {np.mean(vmetrics):.3g}')
 
       # Get the test metric
       test_vals = fusion.eval_model(model, test_x, test_y, num_eval_steps, num_per_group)
       test_metrics += [test_vals]
       if debug:
-        tlosses = []
         tmetrics = []
         for d in test_vals:
-            tlosses += [d['loss']]
-            tmetrics += [d['param_metric_shuffle_trimmed_mse']]
-        print(f'Test metric for run {train_idx}: {np.mean(tmetrics):.3g}')
+            # Debug metrics selected to align with legacy scripts
+            if 'param_metric_shuffle_trimmed_mse' in d.keys():
+              tmetrics += [d['param_metric_shuffle_trimmed_mse']]
+            elif 'param_loss_eps_trimmed_shuffle' in d.keys():
+              tmetrics += [d['param_loss_eps_trimmed_shuffle']]
+        if len(tmetrics) > 0:
+          print(f'Test metric for run {train_idx}: {np.mean(tmetrics):.3g}')
 
     if first_run:
       history = run_history
@@ -365,7 +385,7 @@ def train(datapath, clean, num_train_groups,                           # Data pa
           init_ops, meas_op, input_params, params, deltat, stride,     # Physical params
           start_run_idx, num_runs, num_epochs, num_eval_steps, lr, dr, # Train params
           historydir, modeldir,                                        # Output params
-          perform_eval=True,
+          encoder_only=False, perform_eval=True,
           debug=True):
   '''
   Performs full training procedure: loading data, initializing the model, training the model, and
@@ -404,13 +424,21 @@ def train(datapath, clean, num_train_groups,                           # Data pa
   historydir - Full path where histories will be saved
   modeldir - Full path where models will be saved
   perform_eval - Will perform random shuffle evaluation if true and add results to histories
+  encoder_only - If true, the model will include only the encoder up to the physical parameter layer
   debug - Flag enabling verbose debug output
   '''
   # Load the data
-  train_x, train_y, _, \
-  valid_x, valid_y, _, \
-  test_x, test_y, _ = load_dataset(datapath, data_group_size, clean, stride,
-                                   group_size, num_train_groups, meas_op, debug)
+  train_x, train_y, train_params, \
+  valid_x, valid_y, valid_params, \
+  test_x, test_y, test_params = load_dataset(datapath, data_group_size, clean, stride,
+                                             group_size, num_train_groups, meas_op, debug)
+
+  if encoder_only:
+    train_y = train_params
+    valid_y = valid_params
+    test_y = test_params
+    if debug:
+      print('Using param tensors for Y values since model is encoder only')
 
   _, params_per_group, seq_len, num_features, num_meas = train_x.shape
   num_features -= 2
@@ -428,7 +456,7 @@ def train(datapath, clean, num_train_groups,                           # Data pa
     model = setup_model(seed, group_size, data_group_size,
                         params_per_group, seq_len, num_features, num_meas,
                         init_ops, input_params, params, deltat, stride,
-                        debug)
+                        encoder_only, debug)
     
     # Train the model
     history = train_model(model, seed,
