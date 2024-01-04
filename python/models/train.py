@@ -222,18 +222,14 @@ def setup_model(seed, group_size, data_group_size,                 # Data size p
   model = flex.build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lstm_size, dec_lstm_size, td_sizes, encoder_sizes, num_params,
                                           rho0, params, deltat, num_traj, start_meas, comp_iq=comp_iq, max_val=max_val, offset=offset,
                                           strong_probs=strong_probs, project_rho=project_rho, strong_probs_input=strong_probs_input,
-                                          input_params=input_params, num_per_group=num_per_group, params_per_group=params_per_group)
+                                          input_params=input_params, num_per_group=num_per_group, params_per_group=params_per_group,
+                                          encoder_only=encoder_only)
 
   if encoder_only:
-    layer_name = 'param_layer'
-    enc_model = tf.keras.Model(inputs=model.input,
-                               outputs=model.get_layer(layer_name).output)
-    model = enc_model
+    loss_func = fusion.encoder_only_loss_shuffle
 
-    loss_func = fusion.param_loss_omega_eps_shuffle
-
-    omega_metric_func = fusion.param_loss_omega_trimmed_shuffle
-    eps_metric_func = fusion.param_loss_eps_trimmed_shuffle
+    omega_metric_func = fusion.encoder_only_loss_omega_trimmed_shuffle
+    eps_metric_func = fusion.encoder_only_loss_eps_trimmed_shuffle
 
     all_metrics = [omega_metric_func, eps_metric_func]
   else:

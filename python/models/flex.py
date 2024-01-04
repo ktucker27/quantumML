@@ -540,17 +540,22 @@ def build_multimeas_flex_model(seq_len, num_features, grp_size, avg_size, conv_s
 def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lstm_size, dec_lstm_size, td_sizes, encoder_sizes, num_params,
                               rho0, params, deltat, num_traj=1, start_meas=0, comp_iq=False, input_params=[4],
                               max_val=12, offset=0.0, strong_probs=[], project_rho=True, strong_probs_input=False,
-                              num_per_group=-1, params_per_group=-1):
+                              num_per_group=-1, params_per_group=-1, encoder_only=False):
   '''
   Input:
     input_tensor - [traj, time, (qubit0,qubit1,meas_num0,meas_num1), meas_idx, (volt,[strong_probs])]
+    traj = (num_per_group*num_groups, params_per_group) if num_per_group > 0
   Output:
-    if comp_iq:
-      output_tensor - [traj, time, m, 2 + len(self.strong_probs) + input_dim] - Second index gives the
-                      feature (qubit and value), third index is (mean, stddev, [strong_probs], [input_params])
+    if encoder_only:
+      output_tensor - [traj, param, meas_idx]
     else:
-      output_tensor - [traj, time, num_probs + input_dim] - Second index includes all strong measurement
-                      probabilities followed by input parameters
+      if comp_iq:
+        output_tensor - [traj, time, m, 2 + len(self.strong_probs) + input_dim, meas_idx] - Second index gives the
+                        feature (qubit and value), third index is (mean, stddev, [strong_probs], [input_params])
+      else:
+        output_tensor - [traj, time, num_probs + input_dim, meas_idx] - Second index includes all strong measurement
+                        probabilities followed by input parameters
+  traj = (num_groups, params_per_group) if num_per_group > 0
   '''
   num_strong_probs = len(strong_probs)
   num_features_in = num_features
@@ -609,6 +614,19 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lst
   #x = tf.keras.layers.Lambda(lambda x: x + 1)(x)
 
   x = tf.repeat(x, num_meas, axis=0)
+
+  # This is the extent of the model if it is encoder only
+  if encoder_only:
+    # Split the measurement types back out from the batch index
+    output = tf.transpose(tf.reshape(x, [-1,num_meas,num_params]), perm=[0,2,1])
+
+    # Split the groups back out of the first index, if requested
+    if num_per_group > 0:
+      output = tf.reshape(output, [params_per_group,-1,num_params,num_meas])
+      output = tf.transpose(output, perm=[1,0,2,3])
+
+    return tf.keras.Model(input_layer, output, name='encoder')
+
   x = tf.concat([x, meas_params0, meas_params1], axis=1)
   x = tf.keras.layers.RepeatVector(seq_len, input_shape=[num_params+6])(x)
 

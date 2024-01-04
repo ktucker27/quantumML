@@ -712,6 +712,65 @@ def param_metric_weakstrong(y_true, y_pred, num_strong_probs):
 def param_loss(y_true, y_pred):
     return tf.keras.metrics.mean_squared_error(y_true[:,0], y_pred[:,0])
 
+def encoder_only_loss_shuffle(y_true, y_pred):
+    '''
+    y_true - [data_group,param,phys_param]
+    y_pred - [group,param,phys_param,meas_idx]
+    where param is the index of the physical parameter combination and phys_param selects a particular
+    parameter, e.g. omega or epsilon
+    '''
+    y_true = tf.repeat(y_true[:1,...], tf.shape(y_pred)[0], axis=0)
+    if tf.rank(y_pred) > 3:
+       y_true = y_true[...,tf.newaxis]
+
+    # Evaluate the loss for each sample
+    y_true_ro_results = tf.cast(y_true, tf.float32)
+    y_pred_ro_results = tf.cast(y_pred, tf.float32)
+
+    return tf.reduce_mean(tf.square(y_true_ro_results - y_pred_ro_results))
+
+def encoder_only_loss_omega_trimmed_shuffle(y_true, y_pred):
+    '''
+    y_true - [data_group,param,phys_param]
+    y_pred - [group,param,phys_param,meas_idx]
+    where param is the index of the physical parameter combination and phys_param selects a particular
+    parameter, e.g. omega or epsilon
+    '''
+    y_true = tf.repeat(y_true[:1,...], tf.shape(y_pred)[0], axis=0)
+    if tf.rank(y_pred) > 3:
+       y_true = y_true[...,tf.newaxis]
+
+    # Trim
+    trim_idx = tf.cast(tf.shape(y_true)[1]/10, tf.int32)
+    trim_range = tf.range(trim_idx,tf.shape(y_true)[1] - trim_idx)
+
+    # Evaluate the loss for each sample
+    y_true_ro_results = tf.gather(tf.cast(y_true, tf.float32), trim_range, axis=1)[:,:,0,...]
+    y_pred_ro_results = tf.gather(tf.cast(y_pred, tf.float32), trim_range, axis=1)[:,:,0,...]
+
+    return tf.reduce_mean(tf.square(y_true_ro_results - y_pred_ro_results))
+
+def encoder_only_loss_eps_trimmed_shuffle(y_true, y_pred):
+    '''
+    y_true - [data_group,param,phys_param]
+    y_pred - [group,param,phys_param,meas_idx]
+    where param is the index of the physical parameter combination and phys_param selects a particular
+    parameter, e.g. omega or epsilon
+    '''
+    y_true = tf.repeat(y_true[:1,...], tf.shape(y_pred)[0], axis=0)
+    if tf.rank(y_pred) > 3:
+       y_true = y_true[...,tf.newaxis]
+
+    # Trim
+    trim_idx = tf.cast(tf.shape(y_true)[1]/10, tf.int32)
+    trim_range = tf.range(trim_idx,tf.shape(y_true)[1] - trim_idx)
+
+    # Evaluate the loss for each sample
+    y_true_ro_results = tf.gather(tf.cast(y_true, tf.float32), trim_range, axis=1)[:,:,1,...]
+    y_pred_ro_results = tf.gather(tf.cast(y_pred, tf.float32), trim_range, axis=1)[:,:,1,...]
+
+    return tf.reduce_mean(tf.square(y_true_ro_results - y_pred_ro_results))
+
 def param_loss_omega_eps_shuffle(y_true, y_pred):
     '''
     y_true - [group,param,(omega,eps)]
