@@ -384,7 +384,7 @@ def train_model(model, seed,
 
     # Stop training if validation loss has saturated
     if not first_run and stop_loss_thresh > 0:
-      train_run_ratio, last_run_ratio = fusion.analyze_loss_conv(history)
+      train_run_ratio, last_run_ratio = fusion.analyze_loss_conv(history.history)
       print(f'Run {train_idx} stop ratios:', train_run_ratio, last_run_ratio)
       if train_run_ratio >= stop_loss_thresh and last_run_ratio >= stop_loss_thresh:
         break
