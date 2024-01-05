@@ -382,6 +382,10 @@ def train_model(model, seed,
       for k, v in run_history.history.items():
         history.history[k] += v
 
+    # Update evaluation history
+    history.history['valid_metrics'] = valid_metrics
+    history.history['test_metrics'] = test_metrics
+
     # Stop training if validation loss has saturated
     if not first_run and stop_loss_thresh > 0:
       train_run_ratio, last_run_ratio = fusion.analyze_loss_conv(history.history)
@@ -392,8 +396,6 @@ def train_model(model, seed,
   # Add fields to the history
   history.history['seed'] = seed
   history.history['num_epochs'] = num_epochs
-  history.history['valid_metrics'] = valid_metrics
-  history.history['test_metrics'] = test_metrics
   
   return history
 
