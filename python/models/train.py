@@ -266,11 +266,11 @@ def setup_model(seed, group_size, data_group_size,                 # Data size p
   return model
 
 def train_model(model, seed,
-                train_x, train_y,                                  # Data
+                train_x, train_y,                                     # Data
                 valid_x, valid_y,
                 test_x, test_y,
-                group_size, data_group_size, groups_per_minibatch, # Data size params
-                num_epochs, num_eval_steps, lr, dr,                # Train params
+                group_size, data_group_size, groups_per_minibatch,    # Data size params
+                num_epochs, stop_loss_thresh, num_eval_steps, lr, dr, # Train params
                 perform_eval=True,
                 debug=True):
   '''
@@ -293,6 +293,9 @@ def train_model(model, seed,
   Train
   num_epochs - List containing number of epochs to train in each training run. Learning rate
                will be reset and metrics recorded at the end of each training run
+  stop_loss_thresh - If > 0, training will continue until the final training run drop in validation loss and run-to-run
+                     drop are greater than this threshold (see fusion.analyze_loss_conv for metrics). Minimum training
+                     runs is 2 and maximum is 10
   num_eval_steps - Number of random shuffles to perform when evaluating. Returned metrics will be averaged over
                    this number of steps
   lr - Learning rate during training
@@ -316,10 +319,21 @@ def train_model(model, seed,
   verbose_level = 1
   mini_batch_size = num_per_group*groups_per_minibatch
 
-  num_training_runs = len(num_epochs)
+  if stop_loss_thresh > 0:
+    assert(not isinstance(num_epochs, list))
+    num_training_runs = 10
+  else:
+    assert(isinstance(num_epochs, list))
+    num_training_runs = len(num_epochs)
+
   valid_metrics = []
   test_metrics = []
   for train_idx in range(num_training_runs):
+    if isinstance(num_epochs, list):
+      train_run_epochs = num_epochs[train_idx]
+    else:
+      train_run_epochs = num_epochs
+
     if debug:
       print(f'Training run {train_idx}')
     first_run = train_idx == 0
@@ -329,7 +343,7 @@ def train_model(model, seed,
         decay_steps=1,
         decay_rate=dr))
 
-    run_history = model.fit(train_x, train_y, batch_size=mini_batch_size, epochs=num_epochs[train_idx],
+    run_history = model.fit(train_x, train_y, batch_size=mini_batch_size, epochs=train_run_epochs,
                             validation_data=(valid_x, valid_y), verbose=verbose_level, shuffle=True,
                             callbacks=[lrscheduler])
 
@@ -368,6 +382,13 @@ def train_model(model, seed,
       for k, v in run_history.history.items():
         history.history[k] += v
 
+    # Stop training if validation loss has saturated
+    if not first_run and stop_loss_thresh > 0:
+      train_run_ratio, last_run_ratio = fusion.analyze_loss_conv(history)
+      print(f'Run {train_idx} stop ratios:', train_run_ratio, last_run_ratio)
+      if train_run_ratio >= stop_loss_thresh and last_run_ratio >= stop_loss_thresh:
+        break
+
   # Add fields to the history
   history.history['seed'] = seed
   history.history['num_epochs'] = num_epochs
@@ -379,7 +400,8 @@ def train_model(model, seed,
 def train(datapath, clean, num_train_groups,                           # Data params
           group_size, data_group_size, groups_per_minibatch,
           init_ops, meas_op, input_params, params, deltat, stride,     # Physical params
-          start_run_idx, num_runs, num_epochs, num_eval_steps, lr, dr, # Train params
+          start_run_idx, num_runs, num_epochs, stop_loss_thresh,       # Train params
+          num_eval_steps, lr, dr,
           historydir, modeldir,                                        # Output params
           encoder_only=False, perform_eval=True,
           debug=True):
@@ -410,7 +432,10 @@ def train(datapath, clean, num_train_groups,                           # Data pa
   start_run_idx - Seed for the first run (determines output file labels as well)
   num_runs - Total number of runs
   num_epochs - List containing number of epochs to train for within each run, called a training run. Learning rate
-               will be reset and metrics recorded at the end of each training run
+               will be reset and metrics recorded at the end of each training run (single number if stop_loss_thresh > 0)
+  stop_loss_thresh - If > 0, training will continue until the final training run drop in validation loss and run-to-run
+                     drop are greater than this threshold (see fusion.analyze_loss_conv for metrics). Minimum training
+                     runs is 2 and maximum is 10
   num_eval_steps - Number of random shuffles to perform when evaluating. Returned metrics will be averaged over
                    this number of steps
   lr - Learning rate during training
@@ -458,7 +483,7 @@ def train(datapath, clean, num_train_groups,                           # Data pa
     history = train_model(model, seed,
                           train_x, train_y, valid_x, valid_y, test_x, test_y,
                           group_size, data_group_size, groups_per_minibatch,
-                          num_epochs, num_eval_steps, lr, dr,
+                          num_epochs, stop_loss_thresh, num_eval_steps, lr, dr,
                           perform_eval, debug)
     
     # Save the history
