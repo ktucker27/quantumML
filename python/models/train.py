@@ -12,6 +12,8 @@ sys.path.append(os.path.join(currpath,'../sdes'))
 
 import sde_systems
 
+MAX_TRAIN_RUNS = 20
+
 def load_dataset(datapath, data_group_size, clean, stride, group_size, num_train_groups, meas_op=[], debug=True):
   '''
   Loads data from the specified path and splits it into training/validation/test sets
@@ -295,7 +297,7 @@ def train_model(model, seed,
                will be reset and metrics recorded at the end of each training run
   stop_loss_thresh - If > 0, training will continue until the final training run drop in validation loss and run-to-run
                      drop are greater than this threshold (see fusion.analyze_loss_conv for metrics). Minimum training
-                     runs is 2 and maximum is 10
+                     runs is 2 and maximum is 20
   num_eval_steps - Number of random shuffles to perform when evaluating. Returned metrics will be averaged over
                    this number of steps
   lr - Learning rate during training
@@ -321,7 +323,7 @@ def train_model(model, seed,
 
   if stop_loss_thresh > 0:
     assert(not isinstance(num_epochs, list))
-    num_training_runs = 10
+    num_training_runs = MAX_TRAIN_RUNS
   else:
     assert(isinstance(num_epochs, list))
     num_training_runs = len(num_epochs)
@@ -437,7 +439,7 @@ def train(datapath, clean, num_train_groups,                           # Data pa
                will be reset and metrics recorded at the end of each training run (single number if stop_loss_thresh > 0)
   stop_loss_thresh - If > 0, training will continue until the final training run drop in validation loss and run-to-run
                      drop are greater than this threshold (see fusion.analyze_loss_conv for metrics). Minimum training
-                     runs is 2 and maximum is 10
+                     runs is 2 and maximum is 20
   num_eval_steps - Number of random shuffles to perform when evaluating. Returned metrics will be averaged over
                    this number of steps
   lr - Learning rate during training

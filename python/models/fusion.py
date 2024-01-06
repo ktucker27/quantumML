@@ -90,6 +90,7 @@ def analyze_hist(basedir, metric_names, hist_dir='histories'):
         final_test_metric = {}
         train_run_ratios = []
         last_run_ratios = []
+        num_training_runs = []
 
         for idx, history_file in enumerate(history_files):
           if history_file.find('.dat') < 0:
@@ -110,6 +111,7 @@ def analyze_hist(basedir, metric_names, hist_dir='histories'):
 
           valid_vals = history['valid_metrics'][epoch_idx]
           test_vals = history['test_metrics'][epoch_idx]
+          num_training_runs += [len(history['valid_metrics'])]
 
           vlosses = []
           for d in valid_vals:
@@ -140,6 +142,7 @@ def analyze_hist(basedir, metric_names, hist_dir='histories'):
 
         print('Train run ratios (min, mean, max):', np.min(train_run_ratios), np.mean(train_run_ratios), np.max(train_run_ratios))
         print('Last run ratios (min, mean, max):', np.min(last_run_ratios), np.mean(last_run_ratios), np.max(last_run_ratios))
+        print('Max training runs (min, mean, max, num_max/total):', np.min(num_training_runs), np.mean(num_training_runs), np.max(num_training_runs), f'{np.sum(num_training_runs == np.max(num_training_runs))}/{len(num_training_runs)}')
 
         for metric_name in metric_names:
           print(metric_name + ':')
