@@ -230,8 +230,12 @@ def setup_model(seed, group_size, data_group_size,                 # Data size p
   if encoder_only:
     loss_func = fusion.encoder_only_loss_shuffle
 
-    omega_metric_func = fusion.encoder_only_loss_omega_trimmed_shuffle
-    eps_metric_func = fusion.encoder_only_loss_eps_trimmed_shuffle
+    if num_params == 2:
+      omega_metric_func = fusion.encoder_only_loss_omega_2d_trimmed_shuffle
+      eps_metric_func = fusion.encoder_only_loss_eps_2d_trimmed_shuffle
+    else:
+      omega_metric_func = fusion.encoder_only_loss_omega_trimmed_shuffle
+      eps_metric_func = fusion.encoder_only_loss_eps_trimmed_shuffle
 
     all_metrics = [omega_metric_func, eps_metric_func]
   else:
@@ -239,9 +243,14 @@ def setup_model(seed, group_size, data_group_size,                 # Data size p
     loss_func = fusion.fusion_mse_loss_shuffle
 
     metric_func = fusion.param_metric_shuffle_mse
-    trimmed_metric_func = fusion.param_metric_shuffle_trimmed_mse
-    omega_metric_func = fusion.param_metric_shuffle_omega_trimmed_mse
-    eps_metric_func = fusion.param_metric_shuffle_eps_trimmed_mse
+    if num_params == 2:
+      trimmed_metric_func = fusion.param_metric_shuffle_2d_trimmed_mse
+      omega_metric_func = fusion.param_metric_shuffle_omega_2d_trimmed_mse
+      eps_metric_func = fusion.param_metric_shuffle_eps_2d_trimmed_mse
+    else:
+      trimmed_metric_func = fusion.param_metric_shuffle_trimmed_mse
+      omega_metric_func = fusion.param_metric_shuffle_omega_trimmed_mse
+      eps_metric_func = fusion.param_metric_shuffle_eps_trimmed_mse
 
     all_metrics = [metric_func, trimmed_metric_func, omega_metric_func, eps_metric_func]
 

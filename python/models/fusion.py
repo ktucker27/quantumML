@@ -676,33 +676,51 @@ def param_metric_shuffle_mse(y_true, y_pred):
     return tf.reduce_mean(tf.keras.metrics.mean_squared_error(y_true[:,:,-1,0,0,1:], y_pred[:,:,-1,0,2:,0]))
 
 def param_metric_shuffle_trimmed_mse(y_true, y_pred):
-    '''
-    y_true - [group,param,time,(qubit0,qubit1,meas_num0,meas_num1),meas_idx,(volt,[strong_probs],[true_params])]
-    y_pred - [group,param,time,qubit,(mean,std,[strong_probs],[input_params]),meas_idx]
-    '''
-    y_true = tf.repeat(y_true[:1,...], tf.shape(y_pred)[0], axis=0)
-    trim_idx = tf.cast(y_true.shape[1]/10, tf.int32)
-    trim_range = tf.range(trim_idx,y_true.shape[1] - trim_idx)
-    return tf.reduce_mean(tf.keras.metrics.mean_squared_error(tf.gather(y_true[:,:,-1,0,0,1:], trim_range, axis=1), tf.gather(y_pred[:,:,-1,0,2:,0], trim_range, axis=1)))
+    return param_metric_shuffle_trim_mse(y_true, y_pred, get_trim_indices)
 
 def param_metric_shuffle_omega_trimmed_mse(y_true, y_pred):
-    '''
-    y_true - [group,param,time,(qubit0,qubit1,meas_num0,meas_num1),meas_idx,(volt,[strong_probs],[true_params])]
-    y_pred - [group,param,time,qubit,(mean,std,[strong_probs],[input_params]),meas_idx]
-    '''
-    y_true = tf.repeat(y_true[:1,...], tf.shape(y_pred)[0], axis=0)
-    trim_idx = tf.cast(y_true.shape[1]/10, tf.int32)
-    trim_range = tf.range(trim_idx,y_true.shape[1] - trim_idx)
-    return tf.reduce_mean(tf.keras.metrics.mean_squared_error(tf.gather(y_true[:,:,-1,0,0,-2], trim_range, axis=1), tf.gather(y_pred[:,:,-1,0,-2,0], trim_range, axis=1)))
+   return param_metric_shuffle_omega_trim_mse(y_true, y_pred, get_trim_indices)
 
 def param_metric_shuffle_eps_trimmed_mse(y_true, y_pred):
+   return param_metric_shuffle_eps_trim_mse(y_true, y_pred, get_trim_indices)
+
+def param_metric_shuffle_2d_trimmed_mse(y_true, y_pred):
+    return param_metric_shuffle_trim_mse(y_true, y_pred, get_2d_trim_indices)
+
+def param_metric_shuffle_omega_2d_trimmed_mse(y_true, y_pred):
+   return param_metric_shuffle_omega_trim_mse(y_true, y_pred, get_2d_trim_indices)
+
+def param_metric_shuffle_eps_2d_trimmed_mse(y_true, y_pred):
+   return param_metric_shuffle_eps_trim_mse(y_true, y_pred, get_2d_trim_indices)
+
+def param_metric_shuffle_trim_mse(y_true, y_pred, index_func):
     '''
     y_true - [group,param,time,(qubit0,qubit1,meas_num0,meas_num1),meas_idx,(volt,[strong_probs],[true_params])]
     y_pred - [group,param,time,qubit,(mean,std,[strong_probs],[input_params]),meas_idx]
+    index_func - Function that takes y_true and returns parameter axis trim indices
     '''
     y_true = tf.repeat(y_true[:1,...], tf.shape(y_pred)[0], axis=0)
-    trim_idx = tf.cast(y_true.shape[1]/10, tf.int32)
-    trim_range = tf.range(trim_idx,y_true.shape[1] - trim_idx)
+    trim_range = index_func(y_true)
+    return tf.reduce_mean(tf.keras.metrics.mean_squared_error(tf.gather(y_true[:,:,-1,0,0,1:], trim_range, axis=1), tf.gather(y_pred[:,:,-1,0,2:,0], trim_range, axis=1)))
+
+def param_metric_shuffle_omega_trim_mse(y_true, y_pred, index_func):
+    '''
+    y_true - [group,param,time,(qubit0,qubit1,meas_num0,meas_num1),meas_idx,(volt,[strong_probs],[true_params])]
+    y_pred - [group,param,time,qubit,(mean,std,[strong_probs],[input_params]),meas_idx]
+    index_func - Function that takes y_true and returns parameter axis trim indices
+    '''
+    y_true = tf.repeat(y_true[:1,...], tf.shape(y_pred)[0], axis=0)
+    trim_range = index_func(y_true)
+    return tf.reduce_mean(tf.keras.metrics.mean_squared_error(tf.gather(y_true[:,:,-1,0,0,-2], trim_range, axis=1), tf.gather(y_pred[:,:,-1,0,-2,0], trim_range, axis=1)))
+
+def param_metric_shuffle_eps_trim_mse(y_true, y_pred, index_func):
+    '''
+    y_true - [group,param,time,(qubit0,qubit1,meas_num0,meas_num1),meas_idx,(volt,[strong_probs],[true_params])]
+    y_pred - [group,param,time,qubit,(mean,std,[strong_probs],[input_params]),meas_idx]
+    index_func - Function that takes y_true and returns parameter axis trim indices
+    '''
+    y_true = tf.repeat(y_true[:1,...], tf.shape(y_pred)[0], axis=0)
+    trim_range = index_func(y_true)
     return tf.reduce_mean(tf.keras.metrics.mean_squared_error(tf.gather(y_true[:,:,-1,0,0,-1], trim_range, axis=1), tf.gather(y_pred[:,:,-1,0,-1,0], trim_range, axis=1)))
 
 def param_metric_weakstrong(y_true, y_pred, num_strong_probs):
@@ -733,19 +751,31 @@ def encoder_only_loss_shuffle(y_true, y_pred):
     return tf.reduce_mean(tf.square(y_true_ro_results - y_pred_ro_results))
 
 def encoder_only_loss_omega_trimmed_shuffle(y_true, y_pred):
+   return encoder_only_loss_omega_trim_shuffle(y_true, y_pred, get_trim_indices)
+
+def encoder_only_loss_eps_trimmed_shuffle(y_true, y_pred):
+   return encoder_only_loss_eps_trim_shuffle(y_true, y_pred, get_trim_indices)
+
+def encoder_only_loss_omega_2d_trimmed_shuffle(y_true, y_pred):
+   return encoder_only_loss_omega_trim_shuffle(y_true, y_pred, get_2d_trim_indices)
+
+def encoder_only_loss_eps_2d_trimmed_shuffle(y_true, y_pred):
+   return encoder_only_loss_eps_trim_shuffle(y_true, y_pred, get_2d_trim_indices)
+
+def encoder_only_loss_omega_trim_shuffle(y_true, y_pred, index_func):
     '''
     y_true - [data_group,param,phys_param]
     y_pred - [group,param,phys_param,meas_idx]
     where param is the index of the physical parameter combination and phys_param selects a particular
     parameter, e.g. omega or epsilon
+    index_func - Function that takes y_true and returns parameter axis trim indices
     '''
     y_true = tf.repeat(y_true[:1,...], tf.shape(y_pred)[0], axis=0)
     if tf.rank(y_pred) > 3:
        y_true = y_true[...,tf.newaxis]
 
     # Trim
-    trim_idx = tf.cast(tf.shape(y_true)[1]/10, tf.int32)
-    trim_range = tf.range(trim_idx,tf.shape(y_true)[1] - trim_idx)
+    trim_range = index_func(y_true)
 
     # Evaluate the loss for each sample
     y_true_ro_results = tf.gather(tf.cast(y_true, tf.float32), trim_range, axis=1)[:,:,0,...]
@@ -753,20 +783,20 @@ def encoder_only_loss_omega_trimmed_shuffle(y_true, y_pred):
 
     return tf.reduce_mean(tf.square(y_true_ro_results - y_pred_ro_results))
 
-def encoder_only_loss_eps_trimmed_shuffle(y_true, y_pred):
+def encoder_only_loss_eps_trim_shuffle(y_true, y_pred, index_func):
     '''
     y_true - [data_group,param,phys_param]
     y_pred - [group,param,phys_param,meas_idx]
     where param is the index of the physical parameter combination and phys_param selects a particular
     parameter, e.g. omega or epsilon
+    index_func - Function that takes y_true and returns parameter axis trim indices
     '''
     y_true = tf.repeat(y_true[:1,...], tf.shape(y_pred)[0], axis=0)
     if tf.rank(y_pred) > 3:
        y_true = y_true[...,tf.newaxis]
 
     # Trim
-    trim_idx = tf.cast(tf.shape(y_true)[1]/10, tf.int32)
-    trim_range = tf.range(trim_idx,tf.shape(y_true)[1] - trim_idx)
+    trim_range = index_func(y_true)
 
     # Evaluate the loss for each sample
     y_true_ro_results = tf.gather(tf.cast(y_true, tf.float32), trim_range, axis=1)[:,:,1,...]
@@ -786,30 +816,56 @@ def param_loss_omega_eps_shuffle(y_true, y_pred):
     return tf.reduce_mean(tf.square(y_true - y_pred))
 
 def param_loss_omega_trimmed_shuffle(y_true, y_pred):
+   return param_loss_omega_trim_shuffle(y_true, y_pred, get_trim_indices)
+
+def param_loss_eps_trimmed_shuffle(y_true, y_pred):
+   return param_loss_eps_trim_shuffle(y_true, y_pred, get_trim_indices)
+
+def param_loss_omega_2d_trimmed_shuffle(y_true, y_pred):
+   return param_loss_omega_trim_shuffle(y_true, y_pred, get_2d_trim_indices)
+
+def param_loss_eps_2d_trimmed_shuffle(y_true, y_pred):
+   return param_loss_eps_trim_shuffle(y_true, y_pred, get_2d_trim_indices)
+
+def param_loss_omega_trim_shuffle(y_true, y_pred, index_func):
     '''
     y_true - [group,param,(omega,eps)]
     y_pred - [(param,group),(omega,eps)]
+    index_func - Function that takes y_true and returns parameter axis trim indices
     '''
     y_pred = tf.reshape(y_pred, [tf.shape(y_true)[1],-1,tf.shape(y_pred)[1]])
     y_pred = tf.transpose(y_pred, [1,0,2])
     y_true = tf.repeat(y_true[:1,...], tf.shape(y_pred)[0], axis=0)
-    trim_idx = tf.cast(y_true.shape[1]/10, tf.int32)
-    trim_range = tf.range(trim_idx,y_true.shape[1] - trim_idx)
+    trim_range = index_func(y_true)
     # Evaluate the loss for each sample
     return tf.reduce_mean(tf.square(tf.gather(y_true[...,0], trim_range, axis=1) - tf.gather(y_pred[...,0], trim_range, axis=1)))
 
-def param_loss_eps_trimmed_shuffle(y_true, y_pred):
+def param_loss_eps_trim_shuffle(y_true, y_pred, index_func):
     '''
     y_true - [group,param,(omega,eps)]
     y_pred - [(param,group),(omega,eps)]
+    index_func - Function that takes y_true and returns parameter axis trim indices
     '''
     y_pred = tf.reshape(y_pred, [tf.shape(y_true)[1],-1,tf.shape(y_pred)[1]])
     y_pred = tf.transpose(y_pred, [1,0,2])
     y_true = tf.repeat(y_true[:1,...], tf.shape(y_pred)[0], axis=0)
-    trim_idx = tf.cast(y_true.shape[1]/10, tf.int32)
-    trim_range = tf.range(trim_idx,y_true.shape[1] - trim_idx)
+    trim_range = index_func(y_true)
     # Evaluate the loss for each sample
     return tf.reduce_mean(tf.square(tf.gather(y_true[...,-1], trim_range, axis=1) - tf.gather(y_pred[...,-1], trim_range, axis=1)))
+
+def get_trim_indices(y_true):
+   '''
+   Returns indices for outer 10% of parameters. Assumes parameter index is position 1
+   '''
+   trim_idx = tf.cast(y_true.shape[1]/10, tf.int32)
+   trim_range = tf.range(trim_idx,y_true.shape[1] - trim_idx)
+   return trim_range
+
+def get_2d_trim_indices(y_true):
+   trim_idx = tf.cast(y_true.shape[1]/20, tf.int32)
+   mid_idx = tf.cast(y_true.shape[1]/2, tf.int32)
+   trim_range = tf.concat([tf.range(trim_idx, mid_idx - trim_idx), tf.range(mid_idx + trim_idx, y_true.shape[1] - trim_idx)], axis=0)
+   return trim_range
 
 def param_loss_mp(y_true, y_pred):
     return tf.keras.metrics.mean_squared_error(tf.reshape(y_true,[-1]), tf.reshape(y_pred,[-1]))
