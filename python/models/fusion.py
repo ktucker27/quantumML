@@ -857,14 +857,14 @@ def get_trim_indices(y_true):
    '''
    Returns indices for outer 10% of parameters. Assumes parameter index is position 1
    '''
-   trim_idx = tf.cast(y_true.shape[1]/10, tf.int32)
-   trim_range = tf.range(trim_idx,y_true.shape[1] - trim_idx)
+   trim_idx = tf.cast(tf.shape(y_true)[1]/10, tf.int32)
+   trim_range = tf.range(trim_idx,tf.shape(y_true)[1] - trim_idx)
    return trim_range
 
 def get_2d_trim_indices(y_true):
-   trim_idx = tf.cast(y_true.shape[1]/20, tf.int32)
-   mid_idx = tf.cast(y_true.shape[1]/2, tf.int32)
-   trim_range = tf.concat([tf.range(trim_idx, mid_idx - trim_idx), tf.range(mid_idx + trim_idx, y_true.shape[1] - trim_idx)], axis=0)
+   trim_idx = tf.cast(tf.shape(y_true)[1]/20, tf.int32)
+   mid_idx = tf.cast(tf.shape(y_true)[1]/2, tf.int32)
+   trim_range = tf.concat([tf.range(trim_idx, mid_idx - trim_idx), tf.range(mid_idx + trim_idx, tf.shape(y_true)[1] - trim_idx)], axis=0)
    return trim_range
 
 def param_loss_mp(y_true, y_pred):

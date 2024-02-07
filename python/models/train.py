@@ -152,7 +152,7 @@ def load_dataset(datapath, data_group_size, clean, stride, group_size, num_train
 def setup_model(seed, group_size, data_group_size,                 # Data size params
                 params_per_group, seq_len, num_features, num_meas,
                 init_ops, input_params, params, deltat, stride,    # Physical params
-                encoder_only=False, debug=True):
+                encoder_only=False, debug=True, all_metrics=None):
   '''
   Creates a new model initialized with the given random seed
 
@@ -175,6 +175,8 @@ def setup_model(seed, group_size, data_group_size,                 # Data size p
 
   encoder_only - If true, the model will include only the encoder up to the physical parameter layer
   debug - Flag enabling verbose debug output
+  all_metrics - List of metric functions to use during training and evaluation. Defaults to trimmed metrics
+                ignoring first and last 10% of parameter estimates
 
   Outputs:
   model - The initialized and compiled model, ready to train
@@ -230,29 +232,22 @@ def setup_model(seed, group_size, data_group_size,                 # Data size p
   if encoder_only:
     loss_func = fusion.encoder_only_loss_shuffle
 
-    if num_params == 2:
-      omega_metric_func = fusion.encoder_only_loss_omega_2d_trimmed_shuffle
-      eps_metric_func = fusion.encoder_only_loss_eps_2d_trimmed_shuffle
-    else:
+    if all_metrics is None:
       omega_metric_func = fusion.encoder_only_loss_omega_trimmed_shuffle
       eps_metric_func = fusion.encoder_only_loss_eps_trimmed_shuffle
 
-    all_metrics = [omega_metric_func, eps_metric_func]
+      all_metrics = [omega_metric_func, eps_metric_func]
   else:
     # Setup loss and metric functions
     loss_func = fusion.fusion_mse_loss_shuffle
 
-    metric_func = fusion.param_metric_shuffle_mse
-    if num_params == 2:
-      trimmed_metric_func = fusion.param_metric_shuffle_2d_trimmed_mse
-      omega_metric_func = fusion.param_metric_shuffle_omega_2d_trimmed_mse
-      eps_metric_func = fusion.param_metric_shuffle_eps_2d_trimmed_mse
-    else:
+    if all_metrics is None:
+      metric_func = fusion.param_metric_shuffle_mse
       trimmed_metric_func = fusion.param_metric_shuffle_trimmed_mse
       omega_metric_func = fusion.param_metric_shuffle_omega_trimmed_mse
       eps_metric_func = fusion.param_metric_shuffle_eps_trimmed_mse
 
-    all_metrics = [metric_func, trimmed_metric_func, omega_metric_func, eps_metric_func]
+      all_metrics = [metric_func, trimmed_metric_func, omega_metric_func, eps_metric_func]
 
     # Set decoder trainability
     for layer in model.layers:
@@ -474,6 +469,32 @@ def train(datapath, clean, num_train_groups,                           # Data pa
     if debug:
       print('Using param tensors for Y values since model is encoder only')
 
+  # Setup metric functions
+  if train_params.shape[-1] == 1:
+    # Solving for one parameter, use 1D metrics
+    if encoder_only:
+      omega_metric_func = fusion.encoder_only_loss_omega_trimmed_shuffle
+      eps_metric_func = fusion.encoder_only_loss_eps_trimmed_shuffle
+      all_metrics = [omega_metric_func, eps_metric_func]
+    else:
+      metric_func = fusion.param_metric_shuffle_mse
+      trimmed_metric_func = fusion.param_metric_shuffle_trimmed_mse
+      omega_metric_func = fusion.param_metric_shuffle_omega_trimmed_mse
+      eps_metric_func = fusion.param_metric_shuffle_eps_trimmed_mse
+      all_metrics = [metric_func, trimmed_metric_func, omega_metric_func, eps_metric_func]
+  else:
+    # Solving for two parameters, use 2D metrics
+    if encoder_only:
+      omega_metric_func = fusion.encoder_only_loss_omega_2d_trimmed_shuffle
+      eps_metric_func = fusion.encoder_only_loss_eps_2d_trimmed_shuffle
+      all_metrics = [omega_metric_func, eps_metric_func]
+    else:
+      metric_func = fusion.param_metric_shuffle_mse
+      trimmed_metric_func = fusion.param_metric_shuffle_2d_trimmed_mse
+      omega_metric_func = fusion.param_metric_shuffle_omega_2d_trimmed_mse
+      eps_metric_func = fusion.param_metric_shuffle_eps_2d_trimmed_mse
+      all_metrics = [metric_func, trimmed_metric_func, omega_metric_func, eps_metric_func]
+
   _, params_per_group, seq_len, num_features, num_meas = train_x.shape
   num_features -= 2
 
@@ -490,7 +511,7 @@ def train(datapath, clean, num_train_groups,                           # Data pa
     model = setup_model(seed, group_size, data_group_size,
                         params_per_group, seq_len, num_features, num_meas,
                         init_ops, input_params, params, deltat, stride,
-                        encoder_only, debug)
+                        encoder_only, debug, all_metrics)
     
     # Train the model
     history = train_model(model, seed,
