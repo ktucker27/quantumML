@@ -3,6 +3,7 @@ import tensorflow as tf
 import os
 import sys
 import pickle
+import argparse
 
 import fusion
 import flex
@@ -412,7 +413,7 @@ def train(datapath, clean, num_train_groups,                           # Data pa
           num_eval_steps, lr, dr,
           historydir, modeldir,                                        # Output params
           encoder_only=False, perform_eval=True,
-          debug=True):
+          debug=True, all_metrics=None):
   '''
   Performs full training procedure: loading data, initializing the model, training the model, and
   recording results
@@ -455,6 +456,8 @@ def train(datapath, clean, num_train_groups,                           # Data pa
   perform_eval - Will perform random shuffle evaluation if true and add results to histories
   encoder_only - If true, the model will include only the encoder up to the physical parameter layer
   debug - Flag enabling verbose debug output
+  all_metrics - List of metric functions to use during training and evaluation. Defaults to use number
+                of parameters in dataset to select 1D or 2D trimmed metrics
   '''
   # Load the data
   train_x, train_y, train_params, \
@@ -469,31 +472,32 @@ def train(datapath, clean, num_train_groups,                           # Data pa
     if debug:
       print('Using param tensors for Y values since model is encoder only')
 
-  # Setup metric functions
-  if train_params.shape[-1] == 1:
-    # Solving for one parameter, use 1D metrics
-    if encoder_only:
-      omega_metric_func = fusion.encoder_only_loss_omega_trimmed_shuffle
-      eps_metric_func = fusion.encoder_only_loss_eps_trimmed_shuffle
-      all_metrics = [omega_metric_func, eps_metric_func]
+  # Setup metric functions if none were provided
+  if all_metrics is None:
+    if train_params.shape[-1] == 1:
+      # Solving for one parameter, use 1D metrics
+      if encoder_only:
+        omega_metric_func = fusion.encoder_only_loss_omega_trimmed_shuffle
+        eps_metric_func = fusion.encoder_only_loss_eps_trimmed_shuffle
+        all_metrics = [omega_metric_func, eps_metric_func]
+      else:
+        metric_func = fusion.param_metric_shuffle_mse
+        trimmed_metric_func = fusion.param_metric_shuffle_trimmed_mse
+        omega_metric_func = fusion.param_metric_shuffle_omega_trimmed_mse
+        eps_metric_func = fusion.param_metric_shuffle_eps_trimmed_mse
+        all_metrics = [metric_func, trimmed_metric_func, omega_metric_func, eps_metric_func]
     else:
-      metric_func = fusion.param_metric_shuffle_mse
-      trimmed_metric_func = fusion.param_metric_shuffle_trimmed_mse
-      omega_metric_func = fusion.param_metric_shuffle_omega_trimmed_mse
-      eps_metric_func = fusion.param_metric_shuffle_eps_trimmed_mse
-      all_metrics = [metric_func, trimmed_metric_func, omega_metric_func, eps_metric_func]
-  else:
-    # Solving for two parameters, use 2D metrics
-    if encoder_only:
-      omega_metric_func = fusion.encoder_only_loss_omega_2d_trimmed_shuffle
-      eps_metric_func = fusion.encoder_only_loss_eps_2d_trimmed_shuffle
-      all_metrics = [omega_metric_func, eps_metric_func]
-    else:
-      metric_func = fusion.param_metric_shuffle_mse
-      trimmed_metric_func = fusion.param_metric_shuffle_2d_trimmed_mse
-      omega_metric_func = fusion.param_metric_shuffle_omega_2d_trimmed_mse
-      eps_metric_func = fusion.param_metric_shuffle_eps_2d_trimmed_mse
-      all_metrics = [metric_func, trimmed_metric_func, omega_metric_func, eps_metric_func]
+      # Solving for two parameters, use 2D metrics
+      if encoder_only:
+        omega_metric_func = fusion.encoder_only_loss_omega_2d_trimmed_shuffle
+        eps_metric_func = fusion.encoder_only_loss_eps_2d_trimmed_shuffle
+        all_metrics = [omega_metric_func, eps_metric_func]
+      else:
+        metric_func = fusion.param_metric_shuffle_mse
+        trimmed_metric_func = fusion.param_metric_shuffle_2d_trimmed_mse
+        omega_metric_func = fusion.param_metric_shuffle_omega_2d_trimmed_mse
+        eps_metric_func = fusion.param_metric_shuffle_eps_2d_trimmed_mse
+        all_metrics = [metric_func, trimmed_metric_func, omega_metric_func, eps_metric_func]
 
   _, params_per_group, seq_len, num_features, num_meas = train_x.shape
   num_features -= 2
@@ -540,3 +544,79 @@ def train(datapath, clean, num_train_groups,                           # Data pa
       if debug:
         print('Saving model to', savepath)
       fusion.save_model(model, savepath)
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('datapath', help='Full path of the dataset')
+    parser.add_argument('outdir', help='Output directory')
+    parser.add_argument('--group_size', required=True, type=int, help='Number of trajectories per group')
+    parser.add_argument('--data_group_size', required=True, type=int, help='Number of trajectories averaged together in the data file')
+    parser.add_argument('--num_train_groups', required=True, type=int, help='Number of groups to use in training set')
+    parser.add_argument('--groups_per_mb', required=False, default=1, type=int, help='Number of groups per minibatch')
+    parser.add_argument('--num_epochs', required=True, type=str, help='A list of epochs per training run, or a single number if a stopping criteria is to be used')
+    parser.add_argument('--seed', required=False, default=0, type=int, help='Random seed to use for the run')
+    parser.add_argument('--deltat', required=True, type=str, help='Time interval for data file')
+    parser.add_argument('--stride', required=False, default=1, type=int, help='Time stride for cutting data file')
+    parser.add_argument('--clean', action='store_true', help='If true, input data is clean, not sampled')
+    parser.add_argument('--encoder_only', action='store_true', help='True in the supervised case where only the encoder is used')
+    parser.add_argument('--use_1d_metrics', action='store_true', help='If true, metrics will be 1D regardless of number of parameters in the dataset')
+
+    return parser.parse_args()
+
+def main():
+    # Parse arguments
+    args = parse_args()
+
+    # Train params
+    num_eval_steps = 100
+    lr = 3e-3
+    dr = 0.99
+    perform_eval = True
+    num_runs = 1
+
+    num_epochs = eval(args.num_epochs)
+    stop_loss_thresh = 0.95
+    if isinstance(num_epochs, list):
+      print('Epochs:', num_epochs)
+      stop_loss_thresh = 0
+    else:
+      print('Epochs:', num_epochs, 'with stopping threshold', stop_loss_thresh)
+
+    # XY initial conditions with XY measurements
+    init_ops = [0,1]
+    meas_op = [0,1]
+
+    # Params
+    input_params = [0,4]
+    params = np.array([1.395,4.0*2.0*0.83156,0.1469,0.0,0.1], dtype=np.double)
+    deltat = eval(args.deltat)
+
+    # Output
+    historydir = os.path.join(args.outdir,'histories/')
+    modeldir = os.path.join(args.outdir,'models/')
+
+    # Metrics
+    all_metrics = None
+    if args.use_1d_metrics:
+      if args.encoder_only:
+        omega_metric_func = fusion.encoder_only_loss_omega_trimmed_shuffle
+        eps_metric_func = fusion.encoder_only_loss_eps_trimmed_shuffle
+        all_metrics = [omega_metric_func, eps_metric_func]
+      else:
+        metric_func = fusion.param_metric_shuffle_mse
+        trimmed_metric_func = fusion.param_metric_shuffle_trimmed_mse
+        omega_metric_func = fusion.param_metric_shuffle_omega_trimmed_mse
+        eps_metric_func = fusion.param_metric_shuffle_eps_trimmed_mse
+        all_metrics = [metric_func, trimmed_metric_func, omega_metric_func, eps_metric_func]
+
+    train(args.datapath, args.clean, args.num_train_groups,                  # Data params
+          args.group_size, args.data_group_size, args.groups_per_mb,
+          init_ops, meas_op, input_params, params, deltat, args.stride, # Physical params
+          args.seed, num_runs, num_epochs, stop_loss_thresh,                 # Train params
+          num_eval_steps, lr, dr,
+          historydir=historydir, modeldir=modeldir,                          # Output params
+          encoder_only=args.encoder_only, perform_eval=perform_eval,
+          debug=True, all_metrics=all_metrics)
+
+if __name__ == '__main__':
+    main()
