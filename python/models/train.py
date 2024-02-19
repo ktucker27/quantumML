@@ -459,6 +459,14 @@ def train(datapath, clean, num_train_groups,                           # Data pa
   all_metrics - List of metric functions to use during training and evaluation. Defaults to use number
                 of parameters in dataset to select 1D or 2D trimmed metrics
   '''
+  # Override training parameters for clean data
+  if clean:
+    group_size = 1
+    data_group_size = 1
+    num_train_groups = 1
+    groups_per_minibatch = 1
+    num_eval_steps = 1
+
   # Load the data
   train_x, train_y, train_params, \
   valid_x, valid_y, valid_params, \
