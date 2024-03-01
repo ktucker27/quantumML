@@ -799,8 +799,8 @@ def encoder_only_loss_eps_trim_shuffle(y_true, y_pred, index_func):
     trim_range = index_func(y_true)
 
     # Evaluate the loss for each sample
-    y_true_ro_results = tf.gather(tf.cast(y_true, tf.float32), trim_range, axis=1)[:,:,1,...]
-    y_pred_ro_results = tf.gather(tf.cast(y_pred, tf.float32), trim_range, axis=1)[:,:,1,...]
+    y_true_ro_results = tf.gather(tf.cast(y_true, tf.float32), trim_range, axis=1)[:,:,-1,...]
+    y_pred_ro_results = tf.gather(tf.cast(y_pred, tf.float32), trim_range, axis=1)[:,:,-1,...]
 
     return tf.reduce_mean(tf.square(y_true_ro_results - y_pred_ro_results))
 
