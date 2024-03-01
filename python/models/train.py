@@ -477,6 +477,12 @@ def train(datapath, clean, num_train_groups,                           # Data pa
     train_y = train_params
     valid_y = valid_params
     test_y = test_params
+    if train_params.shape[-1] == 1:
+      # Need to append fixed Omega in this case
+      omega = 1.395
+      train_y = tf.concat([tf.ones_like(train_y)*omega, train_y], axis=-1)
+      valid_y = tf.concat([tf.ones_like(valid_y)*omega, valid_y], axis=-1)
+      test_y = tf.concat([tf.ones_like(test_y)*omega, test_y], axis=-1)
     if debug:
       print('Using param tensors for Y values since model is encoder only')
 
