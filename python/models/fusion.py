@@ -153,6 +153,7 @@ def analyze_hist(basedir, metric_names, hist_dir='histories'):
           print('Percentiles:', sorted_test_metrics[::np.round(0.25*num_vals).astype(np.int32)])
           print('Min:', np.min(final_test_metric[metric_name]))
           print('Mean:', np.mean(final_test_metric[metric_name]))
+          print('Std:', np.std(final_test_metric[metric_name]))
 
 def analyze_loss_conv(history, near_end_idx=-20, window_rad=2):
   '''
