@@ -71,7 +71,7 @@ def load_model(model, modeldir):
     saved_val = tf.saved_model.load(savedir)
     val.assign(saved_val)
 
-def analyze_hist(basedir, metric_names, hist_dir='histories'):
+def analyze_hist(basedir, metric_names, hist_dir='histories', stop_thresh=0.0, max_hist=0):
   basefiles = os.listdir(basedir)
   basefiles.sort()
 
@@ -100,11 +100,14 @@ def analyze_hist(basedir, metric_names, hist_dir='histories'):
           with open(os.path.join(historydir,history_file), "rb") as file_pi:
             history = pickle.load(file_pi)
 
-          histories += [history]
-
           train_run_ratio, last_run_ratio = analyze_loss_conv(history)
+          if train_run_ratio < stop_thresh or last_run_ratio < stop_thresh:
+             continue
+
           train_run_ratios += [train_run_ratio]
           last_run_ratios += [last_run_ratio]
+
+          histories += [history]
 
           epoch_idx = -1
           final_losses += [history['loss'][epoch_idx]]
@@ -137,6 +140,9 @@ def analyze_hist(basedir, metric_names, hist_dir='histories'):
             for d in test_vals:
               tmetrics += [d[metric_name]]
             final_test_metric[metric_name] += [np.mean(tmetrics)]
+          
+          if max_hist > 0 and len(histories) >= max_hist:
+             break
 
         print(f'Loaded {len(histories)} histories')
 
