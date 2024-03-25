@@ -602,7 +602,7 @@ def parse_args():
     parser.add_argument('--num_epochs', required=True, type=str, help='A list of epochs per training run, or a single number if a stopping criteria is to be used')
     parser.add_argument('--seed', required=False, default=0, type=int, help='Random seed to use for the run')
     parser.add_argument('--deltat', required=True, type=str, help='Time interval for data file')
-    parser.add_argument('--kappa', required=False, default=4.0*2.0*0.83156, type=float, help='Decoder model value of kappa')
+    parser.add_argument('--kappa', required=False, default=4.0*0.83156, type=float, help='Decoder model value of kappa')
     parser.add_argument('--gamma_s', required=False, default=0.0, type=float, help='Decoder model value of gamma_s')
     parser.add_argument('--stride', required=False, default=1, type=int, help='Time stride for cutting data file')
     parser.add_argument('--clean', action='store_true', help='If true, input data is clean, not sampled')
