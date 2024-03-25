@@ -92,7 +92,8 @@ def analyze_hist(basedir, metric_names, hist_dir='histories', stop_thresh=0.0, m
         last_run_ratios = []
         num_training_runs = []
 
-        for idx, history_file in enumerate(history_files):
+        first = True
+        for history_file in history_files:
           if history_file.find('.dat') < 0:
             continue
 
@@ -127,7 +128,7 @@ def analyze_hist(basedir, metric_names, hist_dir='histories', stop_thresh=0.0, m
           final_test_losses += [np.mean(tlosses)]
 
           for metric_name in metric_names:
-            if idx == 0:
+            if first:
               final_val_metric[metric_name] = []
               final_test_metric[metric_name] = []
 
@@ -140,11 +141,16 @@ def analyze_hist(basedir, metric_names, hist_dir='histories', stop_thresh=0.0, m
             for d in test_vals:
               tmetrics += [d[metric_name]]
             final_test_metric[metric_name] += [np.mean(tmetrics)]
-          
+
+          first = False
+
           if max_hist > 0 and len(histories) >= max_hist:
              break
 
         print(f'Loaded {len(histories)} histories')
+
+        if len(histories) == 0:
+           continue
 
         print('Train run ratios (min, mean, max):', np.min(train_run_ratios), np.mean(train_run_ratios), np.max(train_run_ratios))
         print('Last run ratios (min, mean, max):', np.min(last_run_ratios), np.mean(last_run_ratios), np.max(last_run_ratios))
@@ -156,7 +162,8 @@ def analyze_hist(basedir, metric_names, hist_dir='histories', stop_thresh=0.0, m
           sorted_test_metrics = np.take(final_test_metric[metric_name], np.argsort(final_val_losses))
 
           num_vals = sorted_test_metrics.shape[0]
-          print('Percentiles:', sorted_test_metrics[::np.round(0.25*num_vals).astype(np.int32)])
+          if num_vals >= 4:
+            print('Percentiles:', sorted_test_metrics[::np.round(0.25*num_vals).astype(np.int32)])
           print('Min:', np.min(final_test_metric[metric_name]))
           print('Mean:', np.mean(final_test_metric[metric_name]))
           print('Std:', np.std(final_test_metric[metric_name]))

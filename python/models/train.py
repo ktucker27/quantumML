@@ -57,10 +57,14 @@ def load_dataset(datapath, data_group_size, clean, stride, group_size, num_train
     voltage[:,:,:,2:,0] = 0.0
     voltage[:,:,:,2:,1] = 1.0
     voltage[:,:,:,2:,2] = 2.0
+    if debug:
+      print('Assuming XX, YY, ZZ measurements')
   else:
     assert(len(meas_op) == 2)
     voltage = tf.concat([voltage, meas_op[0]*tf.ones_like(voltage)[...,:1,:], meas_op[1]*tf.ones_like(voltage)[...,:1,:]], axis=3)
     voltage = voltage.numpy()
+    if debug:
+      print('Meas ops:', meas_op)
 
   # Subsample in time
   voltage = voltage[:,:,::stride,...]
@@ -153,7 +157,8 @@ def load_dataset(datapath, data_group_size, clean, stride, group_size, num_train
 def setup_model(seed, group_size, data_group_size,                 # Data size params
                 params_per_group, seq_len, num_features, num_meas,
                 init_ops, input_params, params, deltat, stride,    # Physical params
-                encoder_only=False, debug=True, all_metrics=None):
+                encoder_only=False, debug=True, all_metrics=None,
+                train_decoder=False):
   '''
   Creates a new model initialized with the given random seed
 
@@ -178,6 +183,7 @@ def setup_model(seed, group_size, data_group_size,                 # Data size p
   debug - Flag enabling verbose debug output
   all_metrics - List of metric functions to use during training and evaluation. Defaults to trimmed metrics
                 ignoring first and last 10% of parameter estimates
+  train_decoder - Flag indicating whether decoder variables are trainable
 
   Outputs:
   model - The initialized and compiled model, ready to train
@@ -193,7 +199,6 @@ def setup_model(seed, group_size, data_group_size,                 # Data size p
   num_traj = 1
   start_meas = 0.0
   comp_iq = True
-  train_decoder = False
   project_rho = train_decoder
   strong_probs = []
   strong_probs_input = False
@@ -237,7 +242,10 @@ def setup_model(seed, group_size, data_group_size,                 # Data size p
       omega_metric_func = fusion.encoder_only_loss_omega_trimmed_shuffle
       eps_metric_func = fusion.encoder_only_loss_eps_trimmed_shuffle
 
-      all_metrics = [omega_metric_func, eps_metric_func]
+      if len(input_params) > 1:
+        all_metrics = [omega_metric_func, eps_metric_func]
+      else:
+        all_metrics = [eps_metric_func]
   else:
     # Setup loss and metric functions
     loss_func = fusion.fusion_mse_loss_shuffle
@@ -248,7 +256,10 @@ def setup_model(seed, group_size, data_group_size,                 # Data size p
       omega_metric_func = fusion.param_metric_shuffle_omega_trimmed_mse
       eps_metric_func = fusion.param_metric_shuffle_eps_trimmed_mse
 
-      all_metrics = [metric_func, trimmed_metric_func, omega_metric_func, eps_metric_func]
+      if len(input_params) > 1:
+        all_metrics = [metric_func, trimmed_metric_func, omega_metric_func, eps_metric_func]
+      else:
+        all_metrics = [metric_func, trimmed_metric_func, eps_metric_func]
 
     # Set decoder trainability
     for layer in model.layers:
@@ -413,7 +424,7 @@ def train(datapath, clean, num_train_groups,                           # Data pa
           num_eval_steps, lr, dr,
           historydir, modeldir,                                        # Output params
           encoder_only=False, perform_eval=True,
-          debug=True, all_metrics=None):
+          debug=True, all_metrics=None, train_decoder=False):
   '''
   Performs full training procedure: loading data, initializing the model, training the model, and
   recording results
@@ -458,6 +469,7 @@ def train(datapath, clean, num_train_groups,                           # Data pa
   debug - Flag enabling verbose debug output
   all_metrics - List of metric functions to use during training and evaluation. Defaults to use number
                 of parameters in dataset to select 1D or 2D trimmed metrics
+  train_decoder - Flag indicating whether decoder variables are trainable
   '''
   # Override training parameters for clean data
   if clean:
@@ -477,7 +489,7 @@ def train(datapath, clean, num_train_groups,                           # Data pa
     train_y = train_params
     valid_y = valid_params
     test_y = test_params
-    if train_params.shape[-1] == 1:
+    if train_params.shape[-1] == 1 and len(input_params) > 1:
       # Need to append fixed Omega in this case
       omega = 1.395
       train_y = tf.concat([tf.ones_like(train_y)*omega, train_y], axis=-1)
@@ -486,20 +498,40 @@ def train(datapath, clean, num_train_groups,                           # Data pa
     if debug:
       print('Using param tensors for Y values since model is encoder only')
 
+  # Data loaders are including Omega in Y tensors. If we are only solving for epsilon
+  # we need to drop the Omega values
+  if input_params == [4]:
+    assert(tf.shape(train_y)[-1] > 2)
+    train_y = tf.gather(train_y, [0,2], axis=-1)
+    valid_y = tf.gather(valid_y, [0,2], axis=-1)
+    test_y = tf.gather(test_y, [0,2], axis=-1)
+
+    if debug:
+      print('Dropping Omega from Y tensors. New shapes:')
+      print(train_y.shape)
+      print(valid_y.shape)
+      print(test_y.shape)
+
   # Setup metric functions if none were provided
   if all_metrics is None:
-    if train_params.shape[-1] == 1:
+    if train_params.shape[-1] == 1 or len(input_params) == 1:
       # Solving for one parameter, use 1D metrics
       if encoder_only:
         omega_metric_func = fusion.encoder_only_loss_omega_trimmed_shuffle
         eps_metric_func = fusion.encoder_only_loss_eps_trimmed_shuffle
-        all_metrics = [omega_metric_func, eps_metric_func]
+        if len(input_params) > 1:
+          all_metrics = [omega_metric_func, eps_metric_func]
+        else:
+          all_metrics = [eps_metric_func]
       else:
         metric_func = fusion.param_metric_shuffle_mse
         trimmed_metric_func = fusion.param_metric_shuffle_trimmed_mse
         omega_metric_func = fusion.param_metric_shuffle_omega_trimmed_mse
         eps_metric_func = fusion.param_metric_shuffle_eps_trimmed_mse
-        all_metrics = [metric_func, trimmed_metric_func, omega_metric_func, eps_metric_func]
+        if len(input_params) > 1:
+          all_metrics = [metric_func, trimmed_metric_func, omega_metric_func, eps_metric_func]
+        else:
+          all_metrics = [metric_func, trimmed_metric_func, eps_metric_func]
     else:
       # Solving for two parameters, use 2D metrics
       if encoder_only:
@@ -529,7 +561,7 @@ def train(datapath, clean, num_train_groups,                           # Data pa
     model = setup_model(seed, group_size, data_group_size,
                         params_per_group, seq_len, num_features, num_meas,
                         init_ops, input_params, params, deltat, stride,
-                        encoder_only, debug, all_metrics)
+                        encoder_only, debug, all_metrics, train_decoder)
     
     # Train the model
     history = train_model(model, seed,
@@ -570,10 +602,16 @@ def parse_args():
     parser.add_argument('--num_epochs', required=True, type=str, help='A list of epochs per training run, or a single number if a stopping criteria is to be used')
     parser.add_argument('--seed', required=False, default=0, type=int, help='Random seed to use for the run')
     parser.add_argument('--deltat', required=True, type=str, help='Time interval for data file')
+    parser.add_argument('--kappa', required=False, default=4.0*2.0*0.83156, type=float, help='Decoder model value of kappa')
+    parser.add_argument('--gamma_s', required=False, default=0.0, type=float, help='Decoder model value of gamma_s')
     parser.add_argument('--stride', required=False, default=1, type=int, help='Time stride for cutting data file')
     parser.add_argument('--clean', action='store_true', help='If true, input data is clean, not sampled')
     parser.add_argument('--encoder_only', action='store_true', help='True in the supervised case where only the encoder is used')
     parser.add_argument('--use_1d_metrics', action='store_true', help='If true, metrics will be 1D regardless of number of parameters in the dataset')
+    parser.add_argument('--train_decoder', action='store_true', help='Flag indicating whether variables in the decoder are trainable')
+    parser.add_argument('--init_ops', required=False, default='[0,1]', type=str, help='A list specifying the initial spins that are up with [0,1,2]=[X,Y,Z]')
+    parser.add_argument('--meas_op', required=False, default='[0,1]', type=str, help='A list specifying the measurement operators with [0,1,2]=[X,Y,Z]. [] implies three measurements: XX, YY, and ZZ')
+    parser.add_argument('--input_params', required=False, default='[0,4]', type=str, help='A list specifying the parameters to solve for with [0,1,2,3,4]=[omega, kappa, eta, gamma_s, eps]')
 
     return parser.parse_args()
 
@@ -597,12 +635,31 @@ def main():
       print('Epochs:', num_epochs, 'with stopping threshold', stop_loss_thresh)
 
     # XY initial conditions with XY measurements
-    init_ops = [0,1]
-    meas_op = [0,1]
+    if args.init_ops is None:
+      init_ops = [0,1]
+    else:
+      init_ops = eval(args.init_ops)
+      if not isinstance(init_ops, list) or len(init_ops) != 2:
+        print('init_ops must be a list of length two')
+        sys.exit(1)
+    
+    if args.meas_op is None:
+      meas_op = [0,1]
+    else:
+      meas_op = eval(args.meas_op)
+      if not isinstance(init_ops, list):
+        print('meas_op must be a list')
+        sys.exit(1)
 
     # Params
-    input_params = [0,4]
-    params = np.array([1.395,4.0*2.0*0.83156,0.1469,0.0,0.1], dtype=np.double)
+    if args.input_params is None:
+      input_params = [0,4]
+    else:
+      input_params = eval(args.input_params)
+      if not isinstance(input_params, list):
+        print('input_params must be a list')
+        sys.exit(1)
+    params = np.array([1.395,2.0*args.kappa,0.1469,args.gamma_s,0.1], dtype=np.double)
     deltat = eval(args.deltat)
 
     # Output
@@ -615,13 +672,19 @@ def main():
       if args.encoder_only:
         omega_metric_func = fusion.encoder_only_loss_omega_trimmed_shuffle
         eps_metric_func = fusion.encoder_only_loss_eps_trimmed_shuffle
-        all_metrics = [omega_metric_func, eps_metric_func]
+        if len(input_params) > 1:
+          all_metrics = [omega_metric_func, eps_metric_func]
+        else:
+          all_metrics = [eps_metric_func]
       else:
         metric_func = fusion.param_metric_shuffle_mse
         trimmed_metric_func = fusion.param_metric_shuffle_trimmed_mse
         omega_metric_func = fusion.param_metric_shuffle_omega_trimmed_mse
         eps_metric_func = fusion.param_metric_shuffle_eps_trimmed_mse
-        all_metrics = [metric_func, trimmed_metric_func, omega_metric_func, eps_metric_func]
+        if len(input_params) > 1:
+          all_metrics = [metric_func, trimmed_metric_func, omega_metric_func, eps_metric_func]
+        else:
+          all_metrics = [metric_func, trimmed_metric_func, eps_metric_func]
 
     train(args.datapath, args.clean, args.num_train_groups,                  # Data params
           args.group_size, args.data_group_size, args.groups_per_mb,
@@ -630,7 +693,7 @@ def main():
           num_eval_steps, lr, dr,
           historydir=historydir, modeldir=modeldir,                          # Output params
           encoder_only=args.encoder_only, perform_eval=perform_eval,
-          debug=True, all_metrics=all_metrics)
+          debug=True, all_metrics=all_metrics, train_decoder=args.train_decoder)
 
 if __name__ == '__main__':
     main()
