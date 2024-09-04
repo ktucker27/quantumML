@@ -75,7 +75,7 @@ def load_truth_file_two_qubits(filepath, return_dict):
         rowidx = 0
         for row in reader:            
             if rowidx == 0:
-                time_axis = np.array([x.split('_')[1] for x in row[1:] if len(x) > 0], dtype=np.float)
+                time_axis = np.array([x.split('_')[1] for x in row[1:] if len(x) > 0], dtype=float)
                 if not 'time_axis' in return_dict.keys():
                     return_dict['time_axis'] = time_axis
                 else:
@@ -84,9 +84,9 @@ def load_truth_file_two_qubits(filepath, return_dict):
             else:
                 row_data = [x for x in row[1:] if len(x) > 0]
                 if rowidx == 1:
-                    true_probs = np.array(row_data, dtype=np.float)
+                    true_probs = np.array(row_data, dtype=float)
                 else:
-                    true_probs = np.vstack((true_probs, np.array(row_data, dtype=np.float)))
+                    true_probs = np.vstack((true_probs, np.array(row_data, dtype=float)))
                 
             rowidx = rowidx + 1
 
