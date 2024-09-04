@@ -937,8 +937,8 @@ class RabiWeakMeasTrajSDE:
         xyz_ten = tf.concat([sxj[tf.newaxis,...], syj[tf.newaxis,...], szj[tf.newaxis,...]], axis=0)
         cj = tf.gather(xyz_ten, tf.argmax(p[:,self.epsend+3*self.qidx:self.epsend+3*self.qidx+3], axis=1))
 
-        l = tf.cast(tf.pow(0.5*p[:,1,tf.newaxis,tf.newaxis],0.5), dtype=rho.dtype)*cj
-        return tf.cast(tf.pow(0.5*p[:,2,tf.newaxis,tf.newaxis],0.5), dtype=rho.dtype)*tf.reshape(tf.linalg.trace(tf.matmul(rho,2.0*l)), [-1,1,1])
+        l = tf.cast(tf.pow(0.5*tf.dtypes.complex(p[:,1,tf.newaxis,tf.newaxis], 0.0),0.5), dtype=rho.dtype)*cj
+        return tf.cast(tf.pow(0.5*tf.dtypes.complex(p[:,2,tf.newaxis,tf.newaxis], 0.0),0.5), dtype=rho.dtype)*tf.reshape(tf.linalg.trace(tf.matmul(rho,2.0*l)), [-1,1,1])
 
     def mib(self,t,x,p):
         if tf.rank(p) == 1:

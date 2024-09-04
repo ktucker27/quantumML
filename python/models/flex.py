@@ -87,7 +87,8 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     m = 2
 
     tvec = np.arange(mint,maxt,deltat)
-    wvec = tf.cast(tf.random.normal(stddev=math.sqrt(deltat), shape=[num_traj,tvec.shape[0]-1,m,1]), dtype=x0.dtype)
+    wvec = tf.random.normal(stddev=math.sqrt(deltat), shape=[num_traj,tvec.shape[0]-1,m,1], dtype=tf.math.real(x0).dtype)
+    wvec = tf.complex(wvec, tf.zeros_like(wvec))
     b = self.zero_b
     if self.sim_noise:
       b = self.flex.b
