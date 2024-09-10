@@ -453,7 +453,8 @@ class TestPhysicalRNN(unittest.TestCase):
         for epsidx, eps in enumerate(epsilons):
             print(f'Checking epsilon = {eps}...')
             liouv = sde_systems.RabiWeakMeasSDE.get_liouv(omega, 2.0*kappa, [eps], 2, meas_op)
-            _, probs_truth = sde_systems.get_2d_probs_truth(liouv, rho0, deltat, maxt - deltat*0.5)
+            _, probs_truth = sde_systems.get_2d_probs_truth(liouv, rho0, deltat, maxt + deltat*0.5)
+            probs_truth = probs_truth[1:,:] # Exclude the initial point since the RNN output does
 
             # Compare all probabilities
             self.assertLessEqual(tf.reduce_max(tf.abs(tf.math.imag(probs_truth))), 1e-14)
@@ -536,7 +537,8 @@ class TestPhysicalRNN(unittest.TestCase):
             for epsidx, eps in enumerate(epsilons):
                 print(f'Checking epsilon = {eps}...')
                 liouv = sde_systems.RabiWeakMeasSDE.get_liouv(omega, 2.0*kappa, [eps], 2, meas_op)
-                _, probs_truth = sde_systems.get_2d_probs_truth(liouv, rho0, deltat, maxt - deltat*0.5)
+                _, probs_truth = sde_systems.get_2d_probs_truth(liouv, rho0, deltat, maxt + deltat*0.5)
+                probs_truth = probs_truth[1:,:] # Exclude the initial point since the RNN output does
 
                 # Compare all probabilities
                 self.assertLessEqual(tf.reduce_max(tf.abs(tf.math.imag(probs_truth))), 1e-14)
