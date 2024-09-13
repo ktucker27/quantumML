@@ -327,6 +327,7 @@ class TestRunModel2d(unittest.TestCase):
             sy0 = qt.tensor(qt.sigmay(), qt.identity(2))
             sy1 = qt.tensor(qt.identity(2), qt.sigmay())
             sz0 = qt.tensor(qt.sigmaz(), qt.identity(2))
+            sz1 = qt.tensor(qt.identity(2), qt.sigmaz())
             szz = qt.tensor(qt.sigmaz(), qt.sigmaz())
 
             H = 0.5*omega*(sx0 + sx1) + eps*szz
@@ -339,7 +340,7 @@ class TestRunModel2d(unittest.TestCase):
             result = qt.smesolve(H, qtrho0, tvec,
                                 c_ops=[np.sqrt(1.0 - 0.5*eta)*np.sqrt(kappa) * sx0, np.sqrt(1.0 - 0.5*eta)*np.sqrt(kappa) * sy1],
                                 sc_ops=[np.sqrt(0.5*eta*kappa) * sx0, np.sqrt(0.5*eta*kappa) * sy1],
-                                e_ops=[sx0,sy0,sz0],
+                                e_ops=[sx0,sx1,sy0,sy1,sz0,sz1],
                                 ntraj=num_traj,
                                 dW_factors=[1,1],
                                 solver='euler',
@@ -373,12 +374,16 @@ class TestRunModel2d(unittest.TestCase):
             rhovec, ivec, _, _ = fusion.run_model_2d(rho0, traj_inputs, num_traj=num_traj, mint=mint, maxt=maxt, deltat=deltat, sim_noise=True, comp_i=True, wvec=wvec)
             print(f'Done. Run time (s): {time.time() - t0}')
             probs = sde_systems.get_2d_probs(rhovec)
+            self.assertLessEqual(tf.reduce_max(tf.abs(tf.math.imag(probs))), 1e-16)
             probs = tf.math.real(probs)
 
-            # TODO - Compare probabilities in the average
-            self.assertLessEqual(tf.reduce_max(tf.abs(tf.math.imag(probs))), 1e-16)
-            #print(result.expect[0][:20])
-            #print(2*probs[0,:20,0] - 1)
+            # Compare probabilities in the average
+            mses = np.zeros(len(result.expect))
+            for ii in range(len(result.expect)):
+                mses[ii] = tf.reduce_mean(tf.square(tf.reduce_mean(probs[:,:,ii], axis=0) - 0.5*(result.expect[ii] + 1.0)))
+            max_mse = np.max(mses)
+            print(f'Max prob MSE (out of {len(result.expect)}):', max_mse)
+            self.assertLessEqual(max_mse, 1.0e-14)
 
             # Compare trajectories relative to the mean
             all_meas = np.zeros([len(result.measurement), result.measurement[0].shape[0], result.measurement[0].shape[1]], result.measurement[0].dtype)
