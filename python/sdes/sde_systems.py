@@ -490,17 +490,23 @@ class FlexSDE:
         self.b_dense_real = b_dense_real
         self.b_dense_imag = b_dense_imag
 
-        self.num_meas = num_meas
+        #self.num_meas = num_meas
 
-    def init_states(self, batch_size):
-        self.a_state_real = self.a_cell_real.get_initial_state(batch_size=batch_size, dtype=tf.float32)[0]
-        self.a_state_imag = self.a_cell_imag.get_initial_state(batch_size=batch_size, dtype=tf.float32)[0]
-        self.a_carry_real = self.a_cell_real.get_initial_state(batch_size=batch_size, dtype=tf.float32)[1]
-        self.a_carry_imag = self.a_cell_imag.get_initial_state(batch_size=batch_size, dtype=tf.float32)[1]
-        self.b_state_real = self.b_cell_real.get_initial_state(batch_size=batch_size, dtype=tf.float32)[0]
-        self.b_state_imag = self.b_cell_imag.get_initial_state(batch_size=batch_size, dtype=tf.float32)[0]
-        self.b_carry_real = self.b_cell_real.get_initial_state(batch_size=batch_size, dtype=tf.float32)[1]
-        self.b_carry_imag = self.b_cell_imag.get_initial_state(batch_size=batch_size, dtype=tf.float32)[1]
+    def set_states(self, a_state_real, a_state_imag, a_carry_real, a_carry_imag,
+                   b_state_real, b_state_imag, b_carry_real, b_carry_imag):
+        self.a_state_real = a_state_real
+        self.a_state_imag = a_state_imag
+        self.a_carry_real = a_carry_real
+        self.a_carry_imag = a_carry_imag
+
+        self.b_state_real = b_state_real
+        self.b_state_imag = b_state_imag
+        self.b_carry_real = b_carry_real
+        self.b_carry_imag = b_carry_imag
+
+    def get_states(self):
+        return (self.a_state_real, self.a_state_imag, self.a_carry_real, self.a_carry_imag,
+                self.b_state_real, self.b_state_imag, self.b_carry_real, self.b_carry_imag)
     
     def a(self,t,x,p):
         p_in = p

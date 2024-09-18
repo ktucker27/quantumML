@@ -42,7 +42,9 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     self.pre_meas_params[1] = 0 # kappa
     self.pre_meas_params[2] = 0 # eta
 
-    self.state_size = [self.rho0.shape, self.m, 1]
+    self.state_size = [self.rho0.shape, self.m, 1,
+                       a_rnn_cell_real.state_size[0], a_rnn_cell_imag.state_size[0], a_rnn_cell_real.state_size[1], a_rnn_cell_imag.state_size[1],
+                       b_rnn_cell_real.state_size[0], b_rnn_cell_imag.state_size[0], b_rnn_cell_real.state_size[1], b_rnn_cell_imag.state_size[1]]
     self.output_size = 43
 
     # Setup the flex SDE functions
@@ -74,8 +76,19 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     super(EulerFlexRNNCell, self).__init__(**kwargs)
 
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
-    self.flex.init_states(batch_size*self.num_traj)
-    return [tf.reshape(tf.ones([self.num_traj*batch_size,1], dtype=tf.complex128)*tf.cast(tf.constant(self.rho0), dtype=tf.complex128), [self.num_traj*batch_size,self.pdim,self.pdim]), tf.zeros([self.num_traj*batch_size,self.m], dtype=tf.complex128), 0.0]
+    self.a_state_real = self.a_rnn_cell_real.get_initial_state(batch_size=batch_size, dtype=tf.float32)[0]
+    self.a_state_imag = self.a_rnn_cell_imag.get_initial_state(batch_size=batch_size, dtype=tf.float32)[0]
+    self.a_carry_real = self.a_rnn_cell_real.get_initial_state(batch_size=batch_size, dtype=tf.float32)[1]
+    self.a_carry_imag = self.a_rnn_cell_imag.get_initial_state(batch_size=batch_size, dtype=tf.float32)[1]
+    self.b_state_real = self.b_rnn_cell_real.get_initial_state(batch_size=batch_size, dtype=tf.float32)[0]
+    self.b_state_imag = self.b_rnn_cell_imag.get_initial_state(batch_size=batch_size, dtype=tf.float32)[0]
+    self.b_carry_real = self.b_rnn_cell_real.get_initial_state(batch_size=batch_size, dtype=tf.float32)[1]
+    self.b_carry_imag = self.b_rnn_cell_imag.get_initial_state(batch_size=batch_size, dtype=tf.float32)[1]
+    self.flex.set_states(self.a_state_real, self.a_state_imag, self.a_carry_real, self.a_carry_imag,
+                         self.b_state_real, self.b_state_imag, self.b_carry_real, self.b_carry_imag)
+    return [tf.reshape(tf.ones([self.num_traj*batch_size,1], dtype=tf.complex128)*tf.cast(tf.constant(self.rho0), dtype=tf.complex128), [self.num_traj*batch_size,self.pdim,self.pdim]), tf.zeros([self.num_traj*batch_size,self.m], dtype=tf.complex128), 0.0,
+            self.a_state_real, self.a_state_imag, self.a_carry_real, self.a_carry_imag,
+            self.b_state_real, self.b_state_imag, self.b_carry_real, self.b_carry_imag]
 
   def set_return_density(self, return_density):
     self.return_density = return_density
@@ -92,10 +105,19 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     b = self.zero_b
     if self.sim_noise:
       b = self.flex.b
+    
+    # Set cell states
+    self.flex.set_states(self.a_state_real, self.a_state_imag, self.a_carry_real, self.a_carry_imag,
+                         self.b_state_real, self.b_state_imag, self.b_carry_real, self.b_carry_imag)
+    
     emod = sde_solve.EulerMultiDModel(mint, maxt, deltat, self.flex.a, b, d, m, params.shape[1], params, [True, True, True, True], create_params=False, tten=tten)
     xvec = emod(x0, num_traj, wvec, params)
     rhovec = sde_systems.unwrap_x_to_rho(tf.reshape(tf.transpose(xvec, perm=[0,2,1]), [-1,10]), self.pdim)
     rhovec = tf.reshape(rhovec, [num_traj,-1,self.pdim,self.pdim])
+
+    # Update cell states
+    (self.a_state_real, self.a_state_imag, self.a_carry_real, self.a_carry_imag,
+     self.b_state_real, self.b_state_imag, self.b_carry_real, self.b_carry_imag) = self.flex.get_states()
 
     # Simulate the voltage record
     if self.comp_iq:
@@ -148,6 +170,8 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     rho = states[0]
     ivec = states[1]
     t = states[2]
+    (self.a_state_real, self.a_state_imag, self.a_carry_real, self.a_carry_imag,
+     self.b_state_real, self.b_state_imag, self.b_carry_real, self.b_carry_imag) = states[3:]
 
     p_t = self.params
     if t < self.start_meas:
@@ -207,9 +231,11 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
       else:
         ivec_out = tf.concat([ivec_mean[...,tf.newaxis], ivec_std[...,tf.newaxis], tf.cast(tf.tile(inputs[:,tf.newaxis,:], multiples=[1,2,1]), dtype=tf.float64)], axis=-1)
       if self.return_density:
-        return rhovecs, [rhovecs, ivec, t]
+        return rhovecs, [rhovecs, ivec, t, self.a_state_real, self.a_state_imag, self.a_carry_real, self.a_carry_imag,
+                                           self.b_state_real, self.b_state_imag, self.b_carry_real, self.b_carry_imag]
       else:
-        return ivec_out, [rhovecs, ivec, t]
+        return ivec_out, [rhovecs, ivec, t, self.a_state_real, self.a_state_imag, self.a_carry_real, self.a_carry_imag,
+                                            self.b_state_real, self.b_state_imag, self.b_carry_real, self.b_carry_imag]
 
     
     #probs = tf.math.maximum(probs,0)
@@ -220,8 +246,10 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     #probs = tf.boolean_mask(probs, mask)
 
     if self.return_density:
-      return tf.concat((rhovecs, tf.cast(inputs[:,:], dtype=tf.float64)), axis=1), [rhovecs, ivec, t]
-    return tf.concat((probs, tf.cast(inputs[:,:], dtype=tf.float64)), axis=1), [rhovecs, ivec, t]
+      return rhovecs, [rhovecs, ivec, t, self.a_state_real, self.a_state_imag, self.a_carry_real, self.a_carry_imag,
+                                         self.b_state_real, self.b_state_imag, self.b_carry_real, self.b_carry_imag]
+    return tf.concat((probs, tf.cast(inputs[:,:], dtype=tf.float64)), axis=1), [rhovecs, ivec, t, self.a_state_real, self.a_state_imag, self.a_carry_real, self.a_carry_imag,
+                                                                                                  self.b_state_real, self.b_state_imag, self.b_carry_real, self.b_carry_imag]
 
 class SDERNNCell(tf.keras.layers.Layer):
   ''' An RNN cell for taking a single Euler step with neural network drift and diffusion functions
