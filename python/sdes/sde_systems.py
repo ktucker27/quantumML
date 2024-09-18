@@ -207,7 +207,7 @@ def project_to_rho(mu, d):
     
     rho = tf.zeros([d,d], dtype=tf.complex128)
     for ii in range(d):
-        rho = rho + tf.cast(lam[ii], tf.complex128)*tf.matmul(evec[:,evalsidx[ii],tf.newaxis], tf.transpose(evec[:,evalsidx[ii],tf.newaxis], conjugate=True))
+        rho = rho + tf.cast(tf.complex(tf.math.real(lam[ii]), tf.math.imag(lam[ii])), tf.complex128)*tf.matmul(evec[:,evalsidx[ii],tf.newaxis], tf.transpose(evec[:,evalsidx[ii],tf.newaxis], conjugate=True))
 
     return rho
 
