@@ -76,14 +76,14 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     super(EulerFlexRNNCell, self).__init__(**kwargs)
 
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
-    self.a_state_real = self.a_rnn_cell_real.get_initial_state(batch_size=batch_size, dtype=tf.float32)[0]
-    self.a_state_imag = self.a_rnn_cell_imag.get_initial_state(batch_size=batch_size, dtype=tf.float32)[0]
-    self.a_carry_real = self.a_rnn_cell_real.get_initial_state(batch_size=batch_size, dtype=tf.float32)[1]
-    self.a_carry_imag = self.a_rnn_cell_imag.get_initial_state(batch_size=batch_size, dtype=tf.float32)[1]
-    self.b_state_real = self.b_rnn_cell_real.get_initial_state(batch_size=batch_size, dtype=tf.float32)[0]
-    self.b_state_imag = self.b_rnn_cell_imag.get_initial_state(batch_size=batch_size, dtype=tf.float32)[0]
-    self.b_carry_real = self.b_rnn_cell_real.get_initial_state(batch_size=batch_size, dtype=tf.float32)[1]
-    self.b_carry_imag = self.b_rnn_cell_imag.get_initial_state(batch_size=batch_size, dtype=tf.float32)[1]
+    self.a_state_real = self.a_rnn_cell_real.get_initial_state(batch_size=self.num_traj*batch_size, dtype=tf.float32)[0]
+    self.a_state_imag = self.a_rnn_cell_imag.get_initial_state(batch_size=self.num_traj*batch_size, dtype=tf.float32)[0]
+    self.a_carry_real = self.a_rnn_cell_real.get_initial_state(batch_size=self.num_traj*batch_size, dtype=tf.float32)[1]
+    self.a_carry_imag = self.a_rnn_cell_imag.get_initial_state(batch_size=self.num_traj*batch_size, dtype=tf.float32)[1]
+    self.b_state_real = self.b_rnn_cell_real.get_initial_state(batch_size=self.num_traj*batch_size, dtype=tf.float32)[0]
+    self.b_state_imag = self.b_rnn_cell_imag.get_initial_state(batch_size=self.num_traj*batch_size, dtype=tf.float32)[0]
+    self.b_carry_real = self.b_rnn_cell_real.get_initial_state(batch_size=self.num_traj*batch_size, dtype=tf.float32)[1]
+    self.b_carry_imag = self.b_rnn_cell_imag.get_initial_state(batch_size=self.num_traj*batch_size, dtype=tf.float32)[1]
     self.flex.set_states(self.a_state_real, self.a_state_imag, self.a_carry_real, self.a_carry_imag,
                          self.b_state_real, self.b_state_imag, self.b_carry_real, self.b_carry_imag)
     return [tf.reshape(tf.ones([self.num_traj*batch_size,1], dtype=tf.complex128)*tf.cast(tf.constant(self.rho0), dtype=tf.complex128), [self.num_traj*batch_size,self.pdim,self.pdim]), tf.zeros([self.num_traj*batch_size,self.m], dtype=tf.complex128), 0.0,
