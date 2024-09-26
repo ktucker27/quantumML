@@ -59,6 +59,16 @@ def validate_density(rhovec, tol=1e-12):
     print('Pass:', success)
     return success
 
+def evec_to_rho(lam, evec):
+    rho = tf.zeros([4,4], tf.complex128)
+    for ii in range(len(lam)):
+        rho = rho + tf.cast(tf.complex(tf.math.real(lam[ii]), tf.math.imag(lam[ii])), tf.complex128)*tf.matmul(evec[:,ii,tf.newaxis], tf.transpose(evec[:,ii,tf.newaxis], conjugate=True))
+    return rho
+
+def rho_fnorm(lam, evec, mu):
+  rho = evec_to_rho(lam, evec)
+  return tf.reduce_sum(tf.square(tf.abs(rho - mu)))
+
 def load_truth_file_two_qubits(filepath, return_dict):
     '''Loads a single tab delimited ground truth file'''
     
@@ -556,6 +566,9 @@ class TestProjectToRho(unittest.TestCase):
         # Create densities with negative eigenvalues and project
 
         tol = 1e-15
+        scipy_tol = 1e-8
+
+        tf.random.set_seed(10)
 
         n = 1000
         d = 4
@@ -563,17 +576,53 @@ class TestProjectToRho(unittest.TestCase):
         mu = l + tf.transpose(l, perm=[0,2,1], conjugate=True)
         mu = mu/tf.linalg.trace(mu)[:,tf.newaxis,tf.newaxis]
 
-        evals, _ = tf.linalg.eigh(mu)
+        evals, evec = tf.linalg.eigh(mu)
         print(f'Matrices with negative evals: {tf.reduce_sum(tf.cast(tf.reduce_min(tf.math.real(evals), axis=1) < 0, tf.int32)).numpy()}/{n}')
         self.assertLessEqual(tf.reduce_max(tf.abs(tf.math.imag(evals))), tol)
         self.assertLessEqual(tf.reduce_max(tf.abs(tf.reduce_sum(evals, axis=1) - 1)), 5e-6)
+        evals = tf.math.real(evals)
 
+        eval_abs_err = []
+        rho_abs_err = []
         proj_rho = np.zeros_like(mu.numpy())
         for ii in range(n):
+            if ii % 100 == 0:
+                print(f'Processing {ii+1} out of {n}...')
+
             proj_rho[ii,:,:] = sde_systems.project_to_rho(mu[ii,:,:], d)
+            rho_evals, _ = tf.linalg.eigh(proj_rho[ii,:,:])
+            self.assertLessEqual(tf.reduce_max(tf.abs(tf.math.imag(rho_evals))), 1e-15)
+            rho_evals = tf.math.real(rho_evals)
+
+            # Get SciPy generated set of values satisfying constraints and minimizing two-norm with eigenvalues
+            res = scipy.optimize.minimize(lambda x : np.sum((x - evals[ii,:].numpy())**2), evals[ii,:].numpy(), 
+                                          constraints={'type':'eq', 'fun': lambda y : np.sum(y) - 1}, 
+                                          bounds=[(0,'inf'), (0,'inf'), (0,'inf'), (0,'inf')], tol=1e-16)
+            abs_err = np.max(np.abs(np.sort(res.x) - np.sort(rho_evals.numpy())))
+            eval_abs_err += [abs_err]
+            self.assertLessEqual(abs_err, scipy_tol)
+
+            # Get SciPy generated nearest density to mu[ii,:,:] that minimizes (5) in the project_to_rho paper
+            res = scipy.optimize.minimize(lambda x : rho_fnorm(x, evec[ii,:,:].numpy(), mu[ii,:,:]).numpy(), evals[ii,:].numpy(),
+                                          constraints={'type':'eq', 'fun': lambda y : np.sum(y) - 1},
+                                          bounds=[(0,'inf'), (0,'inf'), (0,'inf'), (0,'inf')], tol=1e-16)
+            rho2 = evec_to_rho(res.x, evec[ii,:,:])
+            abs_err2 = tf.reduce_max(tf.abs(rho2 - proj_rho[ii,:,:]))
+            rho_abs_err += [abs_err2]
+            if abs_err2 > scipy_tol:
+                print('mu:', mu[ii,:,:])
+                print('proj_rho:', proj_rho)
+                print('rho2:', rho2)
+            self.assertLessEqual(abs_err2, scipy_tol)
 
         # Validate density operators
         assert(validate_density(tf.constant(proj_rho)))
+
+        # Validate SciPy comparison
+        print('SciPy eval abs err (min, max, mean, num):', np.min(eval_abs_err), np.max(eval_abs_err), np.mean(eval_abs_err), len(eval_abs_err))
+        print('SciPy eval abs err quantiles (0.0, .25, .50, .75, .95, 1.0):', np.quantile(eval_abs_err, [0.0, .25, .50, .75, .95, 1.0]))
+        print('SciPy density abs err (min, max, mean, num):', np.min(rho_abs_err), np.max(rho_abs_err), np.mean(rho_abs_err), len(rho_abs_err))
+        print('SciPy density abs err quantiles (0.0, .25, .50, .75, .95, 1.0):', np.quantile(rho_abs_err, [0.0, .25, .50, .75, .95, 1.0]))
 
     def test_valid_rho(self):
         # Run the projection on a set of valid density operators and confirm they do not change
