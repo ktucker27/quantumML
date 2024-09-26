@@ -577,7 +577,8 @@ class TestProjectToRho(unittest.TestCase):
         mu = mu/tf.linalg.trace(mu)[:,tf.newaxis,tf.newaxis]
 
         evals, evec = tf.linalg.eigh(mu)
-        print(f'Matrices with negative evals: {tf.reduce_sum(tf.cast(tf.reduce_min(tf.math.real(evals), axis=1) < 0, tf.int32)).numpy()}/{n}')
+        print(f'Matrices with negative evals (< -1.0e-4): {tf.reduce_sum(tf.cast(tf.reduce_min(tf.math.real(evals), axis=1) < -1.0e-4, tf.int32)).numpy()}/{n}')
+        print('Min eigenvalue quantiles (0.0, 0.1, 0.25, 0.5, 0.75, 1.0):', np.quantile(tf.reduce_min(tf.math.real(evals), axis=1).numpy(), [0.0, 0.1, 0.25, 0.5, 0.75, 1.0]))
         self.assertLessEqual(tf.reduce_max(tf.abs(tf.math.imag(evals))), tol)
         self.assertLessEqual(tf.reduce_max(tf.abs(tf.reduce_sum(evals, axis=1) - 1)), 5e-6)
         evals = tf.math.real(evals)
