@@ -583,6 +583,16 @@ class TestProjectToRho(unittest.TestCase):
         self.assertLessEqual(tf.reduce_max(tf.abs(tf.reduce_sum(evals, axis=1) - 1)), 5e-6)
         evals = tf.math.real(evals)
 
+        # Check that evecs are orthonormal
+        ident = tf.linalg.eye(4, dtype=tf.complex128)
+        qqt = tf.linalg.matmul(evec, tf.transpose(evec, perm=[0,2,1], conjugate=True))
+        qtq = tf.linalg.matmul(tf.transpose(evec, perm=[0,2,1], conjugate=True), evec)
+        qqt_err = tf.reduce_max(tf.abs(qqt - ident[tf.newaxis,...]))
+        qtq_err = tf.reduce_max(tf.abs(qtq - ident[tf.newaxis,...]))
+        print('QQ^*, Q^*Q errors (shapes):', qqt_err, qtq_err, qqt.shape, qtq.shape)
+        self.assertLessEqual(qqt_err, 1.0e-14)
+        self.assertLessEqual(qtq_err, 1.0e-14)
+
         eval_abs_err = []
         rho_abs_err = []
         proj_rho = np.zeros_like(mu.numpy())
