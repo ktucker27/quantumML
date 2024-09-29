@@ -20,7 +20,7 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
 
   def __init__(self, a_rnn_cell_real, a_rnn_cell_imag, b_rnn_cell_real, b_rnn_cell_imag, rho0,
                maxt, deltat, params, num_traj=1, input_param=[0], comp_iq=False, sim_noise=False,
-               start_meas=0, meas_param=-1, num_meas=1, strong_probs=[], project_rho=True, **kwargs):
+               start_meas=0, meas_param=-1, num_meas=1, strong_probs=[], project_rho=True, return_wvec=False, **kwargs):
     self.rho0 = tf.reshape(rho0, [-1])
     self.maxt = maxt
     self.deltat = deltat
@@ -36,6 +36,7 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     self.pdim = 4 # TODO - Remove hard-coded dimension
     self.m = 2
 
+    self.return_wvec = return_wvec
     self.return_density = False
 
     self.pre_meas_params = np.copy(params)
@@ -150,7 +151,7 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
     else:
       ivec = ivec0[:,tf.newaxis,:]
 
-    return rhovec, ivec
+    return rhovec, ivec, wvec
 
   def call(self, inputs, states):
     '''
@@ -200,9 +201,10 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
 
     # Advance the state one time step
     tten = tf.range(t, t+1.5*self.deltat, self.deltat)
-    rhovecs, ivec = self.run_model(rho, ivec, traj_inputs, num_traj=tf.shape(traj_inputs)[0], mint=0, maxt=self.maxt, deltat=self.deltat, tten=tten)
+    rhovecs, ivec, wvec = self.run_model(rho, ivec, traj_inputs, num_traj=tf.shape(traj_inputs)[0], mint=0, maxt=self.maxt, deltat=self.deltat, tten=tten)
     rhovecs = rhovecs[:,-1,:,:]
     ivec = ivec[:,-1,:]
+    wvec = wvec[:,-1,:,:]
 
     t = t + self.deltat
 
@@ -230,6 +232,11 @@ class EulerFlexRNNCell(tf.keras.layers.Layer):
         ivec_out = tf.concat([ivec_mean[...,tf.newaxis], ivec_std[...,tf.newaxis], tf.tile(tf.gather(probs, self.strong_probs, axis=1)[:,tf.newaxis,:], multiples=[1,2,1]), tf.cast(tf.tile(inputs[:,tf.newaxis,:], multiples=[1,2,1]), dtype=tf.float64)], axis=-1)
       else:
         ivec_out = tf.concat([ivec_mean[...,tf.newaxis], ivec_std[...,tf.newaxis], tf.cast(tf.tile(inputs[:,tf.newaxis,:], multiples=[1,2,1]), dtype=tf.float64)], axis=-1)
+      
+      if self.return_wvec:
+        ivec_out = tf.concat([ivec_out, tf.math.real(wvec)], axis=-1)
+        ivec_out = tf.concat([ivec_out, tf.math.imag(wvec)], axis=-1)
+      
       if self.return_density:
         return rhovecs, [rhovecs, ivec, t, self.a_state_real, self.a_state_imag, self.a_carry_real, self.a_carry_imag,
                                            self.b_state_real, self.b_state_imag, self.b_carry_real, self.b_carry_imag]
@@ -704,7 +711,8 @@ def build_multimeas_rnn_model(seq_len, num_features, num_meas, avg_size, enc_lst
   return tf.keras.Model(input_layer, output, name='encoder')
 
 def build_datagen_model(seq_len, num_features, rho0, num_params, params, deltat, num_traj=1, start_meas=0, 
-                        sim_noise=True, comp_iq=True, input_params=[4], strong_probs=[], num_meas=1, meas_op=[]):
+                        sim_noise=True, comp_iq=True, input_params=[4], strong_probs=[], num_meas=1, meas_op=[],
+                        return_wvec=False):
   input_layer = tf.keras.layers.Input(shape=(num_params))
   x = input_layer
 
@@ -737,7 +745,7 @@ def build_datagen_model(seq_len, num_features, rho0, num_params, params, deltat,
                                                    maxt=1.5*deltat, deltat=deltat, rho0=tf.constant(rho0), params=params,
                                                    num_traj=num_traj, input_param=input_params, start_meas=start_meas, comp_iq=comp_iq,
                                                    sim_noise=sim_noise, meas_param=num_params, num_meas=num_meas,
-                                                   strong_probs=strong_probs, project_rho=False),
+                                                   strong_probs=strong_probs, project_rho=False, return_wvec=return_wvec),
                                 stateful=False,
                                 return_sequences=True,
                                 name='physical_layer')
@@ -754,9 +762,12 @@ def build_datagen_model(seq_len, num_features, rho0, num_params, params, deltat,
 
   # Split the measurement types back out from the batch index
   # The first num_params+2 elements of the final index include mean, std, and then the input params prior to
-  # the concatenated meas params
+  # the concatenated meas params, followed by the real and imaginary parts of the wvec
   num_strong_probs = len(strong_probs)
   num_out = 2 + num_strong_probs + num_params
-  output = tf.transpose(tf.reshape(x[...,:num_out], [-1,num_meas,seq_len,num_features,num_out]), perm=[0,2,3,4,1])
+  if return_wvec:
+    output = tf.transpose(tf.reshape(tf.concat([x[...,:num_out], x[...,-2:]], axis=-1), [-1,num_meas,seq_len,num_features,num_out+2]), perm=[0,2,3,4,1])
+  else:
+    output = tf.transpose(tf.reshape(x[...,:num_out], [-1,num_meas,seq_len,num_features,num_out]), perm=[0,2,3,4,1])
 
   return tf.keras.Model(input_layer, output, name='data_gen_model')
