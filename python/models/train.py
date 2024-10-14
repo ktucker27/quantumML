@@ -13,7 +13,7 @@ sys.path.append(os.path.join(currpath,'../sdes'))
 
 import sde_systems
 
-MAX_TRAIN_RUNS = 40
+MAX_TRAIN_RUNS = 100
 
 def load_dataset(datapath, data_group_size, clean, stride, group_size, num_train_groups, meas_op=[], debug=True):
   '''
